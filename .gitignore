@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+keys.txt
+
+# Electron
+*.asar
+
+# Temporary
+tmp/
+temp/
+openclawconfigs/
+test-key.py
+test-key.js
+fix-auth-file.js

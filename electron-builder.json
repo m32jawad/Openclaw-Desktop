@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.openclaw.desktop",
+  "productName": "OpenClaw Desktop",
+  "copyright": "Copyright © 2025 OpenClaw",
+  
+  "directories": {
+    "output": "dist",
+    "buildResources": "resources"
+  },
+  
+  "files": [
+    "src/main/**/*",
+    "src/preload.js",
+    "build/**/*",
+    "!node_modules/**/README*",
+    "!node_modules/**/*.md",
+    "!node_modules/**/LICENSE*",
+    "!node_modules/**/*.ts",
+    "!node_modules/**/.git"
+  ],
+  
+
+  
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "publisherName": "OpenClaw",
+    "verifyUpdateCodeSignature": false
+  },
+  
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "OpenClaw Desktop",
+    "license": "LICENSE",
+    "deleteAppDataOnUninstall": false
+  },
+  
+  "mac": {
+    "target": ["dmg"],
+    "icon": "resources/icon.icns",
+    "category": "public.app-category.developer-tools"
+  },
+  
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "icon": "resources/icons",
+    "category": "Development"
+  },
+  
+  "publish": null
+}
