@@ -10,7 +10,12 @@
     "build:renderer": "webpack --mode production",
     "build": "npm run build:renderer && electron-builder",
     "build:win": "npm run build:renderer && electron-builder --win",
-    "build:dir": "npm run build:renderer && electron-builder --dir"
+    "build:mac": "npm run build:renderer && electron-builder --mac",
+    "build:mac:zip": "npm run build:renderer && electron-builder --mac zip",
+    "build:mac:dir": "npm run build:renderer && electron-builder --mac dir",
+    "build:linux": "npm run build:renderer && electron-builder --linux",
+    "build:dir": "npm run build:renderer && electron-builder --dir",
+    "icons": "node scripts/generate-icons.js"
   },
   "build": {
     "appId": "com.openclaw.desktop",
@@ -59,6 +64,7 @@
     "html-webpack-plugin": "^5.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "sharp": "^0.34.5",
     "style-loader": "^3.3.3",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4"

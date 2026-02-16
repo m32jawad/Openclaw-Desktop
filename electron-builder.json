@@ -45,9 +45,28 @@
   },
   
   "mac": {
-    "target": ["dmg"],
-    "icon": "resources/icon.icns",
-    "category": "public.app-category.developer-tools"
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "resources/icon.png",
+    "category": "public.app-category.developer-tools",
+    "darkModeSupport": true,
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false
+  },
+
+  "dmg": {
+    "contents": [
+      { "x": 130, "y": 220 },
+      { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+    ]
   },
   
   "linux": {
