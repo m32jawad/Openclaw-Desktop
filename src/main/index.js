@@ -27,7 +27,77 @@ const workflowManager = new WorkflowManager();
 
 let mainWindow = null;
 let tray = null;
+let voiceQuestionWindow = null;
 let transcribeBlockedUntil = 0;
+
+function createVoiceQuestionWindow() {
+  if (voiceQuestionWindow && !voiceQuestionWindow.isDestroyed()) {
+    return voiceQuestionWindow;
+  }
+
+  const { workArea } = require('electron').screen.getPrimaryDisplay();
+  const width = 420;
+  const height = 240;
+  const x = Math.max(workArea.x + 16, workArea.x + workArea.width - width - 24);
+  const y = Math.max(workArea.y + 16, workArea.y + 60);
+
+  voiceQuestionWindow = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    minWidth: 380,
+    minHeight: 220,
+    maxWidth: 520,
+    maxHeight: 420,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    autoHideMenuBar: true,
+    title: 'Voice Assistant Question',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    },
+    show: false
+  });
+
+  voiceQuestionWindow.loadFile(path.join(__dirname, 'voiceQuestionWindow.html'));
+
+  voiceQuestionWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      voiceQuestionWindow.hide();
+    }
+  });
+
+  voiceQuestionWindow.on('closed', () => {
+    voiceQuestionWindow = null;
+  });
+
+  return voiceQuestionWindow;
+}
+
+function showVoiceQuestionWindow(question) {
+  const popup = createVoiceQuestionWindow();
+  if (!popup || popup.isDestroyed()) return;
+
+  if (!popup.isVisible()) {
+    popup.show();
+  }
+  popup.focus();
+  popup.moveTop();
+
+  popup.webContents.send('voice-assistant-question', question);
+}
+
+function hideVoiceQuestionWindow() {
+  if (voiceQuestionWindow && !voiceQuestionWindow.isDestroyed()) {
+    voiceQuestionWindow.hide();
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -630,12 +700,16 @@ ipcMain.handle('start-recording', (event, sourceId, withVoiceAssistant = false) 
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('voice-assistant-question', question);
       }
+      showVoiceQuestionWindow(question);
     });
+  } else {
+    hideVoiceQuestionWindow();
   }
   return screenRecorder.startRecording(sourceId, withVoiceAssistant);
 });
 
 ipcMain.handle('stop-recording', () => {
+  hideVoiceQuestionWindow();
   return screenRecorder.stopRecording();
 });
 
@@ -664,6 +738,9 @@ ipcMain.handle('add-input-event', (event, inputEvent) => {
 // Voice Assistant handlers
 ipcMain.handle('answer-voice-question', async (event, questionId, answer) => {
   await screenRecorder.answerQuestion(questionId, answer);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('voice-assistant-answer-submitted', { questionId, answer });
+  }
   return { success: true };
 });
 
@@ -933,6 +1010,9 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (voiceQuestionWindow && !voiceQuestionWindow.isDestroyed()) {
+    voiceQuestionWindow.destroy();
+  }
   gatewayManager.stop();
   screenRecorder.cleanup();
 });
