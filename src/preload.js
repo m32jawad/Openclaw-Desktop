@@ -83,7 +83,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Screen recording
   getScreenSources: () => ipcRenderer.invoke('get-screen-sources'),
-  startRecording: (sourceId) => ipcRenderer.invoke('start-recording', sourceId),
+  startRecording: (sourceId, withVoiceAssistant) => ipcRenderer.invoke('start-recording', sourceId, withVoiceAssistant),
   stopRecording: () => ipcRenderer.invoke('stop-recording'),
   saveRecording: (recordingId, buffer) => ipcRenderer.invoke('save-recording', recordingId, buffer),
   getRecordingStatus: () => ipcRenderer.invoke('get-recording-status'),
@@ -92,6 +92,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startInputLogging: (recordingId) => ipcRenderer.invoke('start-input-logging', recordingId),
   stopInputLogging: () => ipcRenderer.invoke('stop-input-logging'),
   addInputEvent: (event) => ipcRenderer.invoke('add-input-event', event),
+  
+  // Voice Assistant
+  answerVoiceQuestion: (questionId, answer) => ipcRenderer.invoke('answer-voice-question', questionId, answer),
+  captureScreenForAnalysis: () => ipcRenderer.invoke('capture-screen-for-analysis'),
+  getVoiceContext: () => ipcRenderer.invoke('get-voice-context'),
+  onVoiceAssistantQuestion: (callback) => {
+    const listener = (event, question) => callback(question);
+    ipcRenderer.on('voice-assistant-question', listener);
+    return () => ipcRenderer.removeListener('voice-assistant-question', listener);
+  },
 
   // Gemini analysis
   analyzeRecording: (recordingId) => ipcRenderer.invoke('analyze-recording', recordingId),
@@ -111,6 +121,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Workflow history
   getWorkflowHistory: (workflowId) => ipcRenderer.invoke('get-workflow-history', workflowId),
   clearWorkflowHistory: (workflowId) => ipcRenderer.invoke('clear-workflow-history', workflowId),
+
+  // Audio transcription via Gemini
+  transcribeAudio: (audioBuffer) => ipcRenderer.invoke('transcribe-audio', audioBuffer),
 
   // API key management for Gemini
   saveGeminiApiKey: (key) => ipcRenderer.invoke('save-gemini-api-key', key),

@@ -18,6 +18,8 @@ function Recorder({ onWorkflowCreated }) {
   const [answerText, setAnswerText] = useState('');
   const [questionHistory, setQuestionHistory] = useState([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -26,6 +28,9 @@ function Recorder({ onWorkflowCreated }) {
   const maxTimerRef = useRef(null);
   const speechSynthesisRef = useRef(null);
   const screenCaptureIntervalRef = useRef(null);
+  const voiceRecorderRef = useRef(null);
+  const voiceStreamRef = useRef(null);
+  const voiceChunksRef = useRef([]);
 
   // Input event tracking
   const eventsRef = useRef([]);
@@ -34,22 +39,25 @@ function Recorder({ onWorkflowCreated }) {
   useEffect(() => {
     checkApiKey();
     
+    // Note: Web SpeechRecognition does NOT work in Electron.
+    // Voice input uses MediaRecorder + Gemini transcription instead (see startListening/stopListening).
+    
     // Setup voice assistant question listener
-    const handleQuestion = (question) => {
+    const removeListener = window.electronAPI.onVoiceAssistantQuestion?.((question) => {
       setCurrentQuestion(question);
       setQuestionHistory(prev => [...prev, question]);
       speakQuestion(question.question);
-    };
-    
-    window.electronAPI.onVoiceAssistantQuestion?.(handleQuestion);
+    });
     
     return () => {
       stopTimer();
       cleanupStream();
       cancelSpeech();
+      stopListening();
       if (screenCaptureIntervalRef.current) {
         clearInterval(screenCaptureIntervalRef.current);
       }
+      if (removeListener) removeListener();
     };
   }, []);
 
@@ -95,6 +103,144 @@ function Recorder({ onWorkflowCreated }) {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
+    }
+  };
+  
+  // Voice Assistant Functions
+  const speakQuestion = (text) => {
+    if (!('speechSynthesis' in window)) {
+      console.warn('[TTS] Speech synthesis not supported');
+      return;
+    }
+    
+    cancelSpeech(); // Cancel any ongoing speech
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      // Auto-start listening after question is spoken
+      startListening();
+    };
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    speechSynthesisRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+  
+  const cancelSpeech = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
+  
+  const startListening = async () => {
+    // Use MediaRecorder + Gemini transcription (SpeechRecognition doesn't work in Electron)
+    if (isListening || isTranscribing) {
+      console.log('[VoiceInput] Already listening or transcribing');
+      return;
+    }
+    
+    try {
+      console.log('[VoiceInput] Starting microphone recording...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) voiceChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        // Stop mic stream
+        stream.getTracks().forEach(track => track.stop());
+        voiceStreamRef.current = null;
+        setIsListening(false);
+        setIsTranscribing(true);
+
+        try {
+          const blob = new Blob(voiceChunksRef.current, { type: mimeType || 'audio/webm' });
+          const arrayBuffer = await blob.arrayBuffer();
+          console.log('[VoiceInput] Sending audio for transcription...');
+          const result = await window.electronAPI.transcribeAudio(arrayBuffer);
+
+          if (result.success && result.text) {
+            console.log('[VoiceInput] Transcript:', result.text);
+            setAnswerText(result.text);
+          } else if (!result.success) {
+            console.error('[VoiceInput] Transcription failed:', result.error);
+            setError('Voice transcription failed: ' + result.error);
+          }
+        } catch (err) {
+          console.error('[VoiceInput] Transcription error:', err);
+          setError('Voice transcription error: ' + err.message);
+        }
+        setIsTranscribing(false);
+      };
+
+      voiceRecorderRef.current = recorder;
+      recorder.start();
+      setIsListening(true);
+      console.log('[VoiceInput] Listening...');
+    } catch (error) {
+      console.error('[VoiceInput] Failed to start:', error);
+      setError(`Voice input failed: ${error.message}`);
+      setIsListening(false);
+    }
+  };
+  
+  const stopListening = () => {
+    if (voiceRecorderRef.current && voiceRecorderRef.current.state !== 'inactive') {
+      try {
+        voiceRecorderRef.current.stop();
+      } catch (error) {
+        console.error('[VoiceInput] Failed to stop:', error);
+      }
+    }
+    if (voiceStreamRef.current) {
+      voiceStreamRef.current.getTracks().forEach(track => track.stop());
+      voiceStreamRef.current = null;
+    }
+    setIsListening(false);
+  };
+  
+  const submitAnswer = async () => {
+    if (!currentQuestion || !answerText.trim()) return;
+    
+    try {
+      await window.electronAPI.answerVoiceQuestion(currentQuestion.id, answerText.trim());
+      setCurrentQuestion(null);
+      setAnswerText('');
+      stopListening();
+    } catch (error) {
+      console.error('[VoiceAssistant] Failed to submit answer:', error);
+      setError('Failed to submit answer: ' + error.message);
+    }
+  };
+  
+  const skipQuestion = async () => {
+    if (!currentQuestion) return;
+    
+    try {
+      await window.electronAPI.answerVoiceQuestion(currentQuestion.id, null);
+      setCurrentQuestion(null);
+      setAnswerText('');
+      stopListening();
+    } catch (error) {
+      console.error('[VoiceAssistant] Failed to skip question:', error);
     }
   };
 
@@ -190,7 +336,7 @@ function Recorder({ onWorkflowCreated }) {
       streamRef.current = stream;
 
       // Notify main process
-      const result = await window.electronAPI.startRecording(source.id);
+      const result = await window.electronAPI.startRecording(source.id, voiceAssistantEnabled);
       if (!result.success) {
         throw new Error(result.error);
       }
@@ -224,6 +370,17 @@ function Recorder({ onWorkflowCreated }) {
 
       // Start timer
       startTimer();
+      
+      // Start screen captures for voice assistant if enabled
+      if (voiceAssistantEnabled && result.voiceAssistantActive) {
+        screenCaptureIntervalRef.current = setInterval(async () => {
+          try {
+            await window.electronAPI.captureScreenForAnalysis();
+          } catch (error) {
+            console.error('[Recorder] Screen capture error:', error);
+          }
+        }, 20000); // Capture every 20 seconds (reduced to avoid quota limits)
+      }
 
       // Auto-stop at 15 minutes
       maxTimerRef.current = setTimeout(() => {
@@ -242,6 +399,14 @@ function Recorder({ onWorkflowCreated }) {
     try {
       stopTimer();
       detachInputListeners();
+      cancelSpeech();
+      stopListening();
+      
+      // Stop screen capture interval
+      if (screenCaptureIntervalRef.current) {
+        clearInterval(screenCaptureIntervalRef.current);
+        screenCaptureIntervalRef.current = null;
+      }
 
       // Stop input logging
       await window.electronAPI.stopInputLogging();
@@ -454,6 +619,28 @@ function Recorder({ onWorkflowCreated }) {
               AI-Powered Analysis
             </div>
           </div>
+          
+          {/* Voice Assistant Toggle */}
+          <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: voiceAssistantEnabled ? '2px solid var(--accent-primary)' : '2px solid var(--border-color)', background: voiceAssistantEnabled ? 'rgba(59, 130, 246, 0.1)' : 'transparent', transition: 'all 0.2s' }}>
+              <input 
+                type="checkbox" 
+                checked={voiceAssistantEnabled}
+                onChange={(e) => setVoiceAssistantEnabled(e.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 003 3v7a3 3 0 11-6 0V4a3 3 0 003-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              <span style={{ fontWeight: 500, fontSize: 14 }}>Enable Voice Assistant</span>
+            </label>
+          </div>
+          {voiceAssistantEnabled && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, maxWidth: 520, margin: '0 auto 20px', fontStyle: 'italic' }}>
+              🎙️ The AI will monitor your recording every 20 seconds, ask clarifying questions, and create detailed, instructional workflows
+              <br />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>⚠️ Free tier: Limited to ~15 questions per minute</span>
+            </p>
+          )}
+          
           <button className="btn btn-primary" style={{ fontSize: 16, padding: '12px 32px' }} onClick={showSourcePicker}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="12" r="8"/>
@@ -534,6 +721,94 @@ function Recorder({ onWorkflowCreated }) {
               Stop Recording
             </button>
           </div>
+          
+          {/* Voice Assistant Q&A Interface */}
+          {voiceAssistantEnabled && currentQuestion && (
+            <div className="card" style={{ marginTop: 20, padding: 24, background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.1))', border: '2px solid var(--accent-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'start', gap: 16, marginBottom: 16 }}>
+                <div style={{ background: 'var(--accent-primary)', borderRadius: '50%', padding: 12, flexShrink: 0 }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M12 1a3 3 0 003 3v7a3 3 0 11-6 0V4a3 3 0 003-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/>
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <h4 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Voice Assistant</h4>
+                    {isSpeaking && (
+                      <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        <div className="recording-dot" style={{ width: 6, height: 6 }}></div>
+                        <span style={{ fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }}>Speaking...</span>
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 15, marginBottom: 16, color: 'var(--text-primary)' }}>
+                    {currentQuestion.question}
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={answerText}
+                      onChange={(e) => setAnswerText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
+                      placeholder="Type or speak your answer..."
+                      style={{ flex: 1 }}
+                    />
+                    {navigator.mediaDevices && (
+                      <button 
+                        className={`btn ${isListening ? 'btn-danger' : isTranscribing ? 'btn-secondary' : 'btn-secondary'}`}
+                        onClick={isListening ? stopListening : startListening}
+                        disabled={isTranscribing}
+                        title={isTranscribing ? 'Transcribing...' : isListening ? 'Stop listening' : 'Use voice input'}
+                        style={{ padding: '8px 12px', position: 'relative' }}
+                      >
+                        {isTranscribing ? (
+                          <div className="spinner" style={{ width: 16, height: 16 }}></div>
+                        ) : (
+                          <>
+                            {isListening && (
+                              <div className="recording-dot" style={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6 }}></div>
+                            )}
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 003 3v7a3 3 0 11-6 0V4a3 3 0 003-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button 
+                      className="btn btn-primary" 
+                      onClick={submitAnswer}
+                      disabled={!answerText.trim()}
+                      style={{ flex: 1 }}
+                    >
+                      Submit Answer
+                    </button>
+                    <button className="btn btn-secondary" onClick={skipQuestion}>
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Question History */}
+          {voiceAssistantEnabled && questionHistory.length > 0 && !currentQuestion && (
+            <div className="card" style={{ marginTop: 20, padding: 20 }}>
+              <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--text-secondary)' }}>
+                💬 Questions Asked ({questionHistory.length})
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {questionHistory.slice(-3).map((q, idx) => (
+                  <div key={idx} style={{ padding: 8, background: 'var(--card-bg)', borderRadius: 6, fontSize: 13 }}>
+                    <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>Q: {q.question}</div>
+                    {q.answer && <div style={{ color: 'var(--text-primary)', paddingLeft: 12 }}>A: {q.answer}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

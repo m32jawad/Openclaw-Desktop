@@ -64,35 +64,18 @@ function Chat({ gatewayStatus }) {
   const [streaming, setStreaming] = useState(false);
   const [streamBuffer, setStreamBuffer] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const recognitionRef = useRef(null);
+  const voiceRecorderRef = useRef(null);
+  const voiceStreamRef = useRef(null);
+  const voiceChunksRef = useRef([]);
 
   useEffect(() => {
-    // Check if speech recognition is supported
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      setSpeechSupported(true);
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(prev => prev + (prev ? ' ' : '') + transcript);
-        setIsRecording(false);
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsRecording(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsRecording(false);
-      };
+    // Check if audio recording is supported (works in Electron, unlike SpeechRecognition)
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      setVoiceSupported(true);
     }
 
     // Load chat history
@@ -105,8 +88,12 @@ function Chat({ gatewayStatus }) {
 
     return () => {
       unsubscribe?.();
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      // Cleanup voice recording
+      if (voiceRecorderRef.current && voiceRecorderRef.current.state !== 'inactive') {
+        voiceRecorderRef.current.stop();
+      }
+      if (voiceStreamRef.current) {
+        voiceStreamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
@@ -216,18 +203,61 @@ function Chat({ gatewayStatus }) {
     }
   };
 
-  const toggleVoiceInput = () => {
-    if (!speechSupported || !isConnected) return;
+  const toggleVoiceInput = async () => {
+    if (!voiceSupported || !isConnected || isTranscribing) return;
 
     if (isRecording) {
-      recognitionRef.current?.stop();
-      setIsRecording(false);
+      // Stop recording — the onstop handler will transcribe
+      if (voiceRecorderRef.current && voiceRecorderRef.current.state !== 'inactive') {
+        voiceRecorderRef.current.stop();
+      }
     } else {
+      // Start recording audio from microphone
       try {
-        recognitionRef.current?.start();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceStreamRef.current = stream;
+        voiceChunksRef.current = [];
+
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/webm')
+            ? 'audio/webm'
+            : '';
+
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) voiceChunksRef.current.push(e.data);
+        };
+
+        recorder.onstop = async () => {
+          // Stop mic stream
+          stream.getTracks().forEach(track => track.stop());
+          voiceStreamRef.current = null;
+          setIsRecording(false);
+          setIsTranscribing(true);
+
+          try {
+            const blob = new Blob(voiceChunksRef.current, { type: mimeType || 'audio/webm' });
+            const arrayBuffer = await blob.arrayBuffer();
+            const result = await window.electronAPI.transcribeAudio(arrayBuffer);
+
+            if (result.success && result.text) {
+              setInput(prev => prev + (prev ? ' ' : '') + result.text);
+            } else if (!result.success) {
+              console.error('Transcription failed:', result.error);
+            }
+          } catch (err) {
+            console.error('Transcription error:', err);
+          }
+          setIsTranscribing(false);
+        };
+
+        voiceRecorderRef.current = recorder;
+        recorder.start();
         setIsRecording(true);
       } catch (error) {
-        console.error('Failed to start speech recognition:', error);
+        console.error('Failed to start audio recording:', error);
       }
     }
   };
@@ -340,14 +370,16 @@ function Chat({ gatewayStatus }) {
               maxHeight: 120
             }}
           />
-          {speechSupported && (
+          {voiceSupported && (
             <button
-              className={`voice-input-btn ${isRecording ? 'recording' : ''}`}
+              className={`voice-input-btn ${isRecording ? 'recording' : ''} ${isTranscribing ? 'transcribing' : ''}`}
               onClick={toggleVoiceInput}
-              disabled={!isConnected || sending}
-              title={isRecording ? "Stop recording" : "Voice input"}
+              disabled={!isConnected || sending || isTranscribing}
+              title={isTranscribing ? 'Transcribing...' : isRecording ? 'Stop recording' : 'Voice input'}
             >
-              {isRecording ? (
+              {isTranscribing ? (
+                <div className="spinner" style={{ width: 16, height: 16 }}></div>
+              ) : isRecording ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="6" y="6" width="12" height="12" rx="2"/>
                 </svg>

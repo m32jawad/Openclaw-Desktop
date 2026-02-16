@@ -8,6 +8,7 @@ const ScreenRecorder = require('./recorder');
 const InputLogger = require('./inputLogger');
 const GeminiAnalyzer = require('./geminiAnalyzer');
 const WorkflowManager = require('./workflowManager');
+const VoiceAssistant = require('./voiceAssistant');
 
 // Initialize stores and managers
 const store = new Store({
@@ -18,13 +19,15 @@ const store = new Store({
 const installer = new DependencyInstaller();
 const gatewayManager = new GatewayManager();
 const configManager = new ConfigManager();
-const screenRecorder = new ScreenRecorder();
+const voiceAssistant = new VoiceAssistant(configManager, store);
+const screenRecorder = new ScreenRecorder(voiceAssistant);
 const inputLogger = new InputLogger();
 const geminiAnalyzer = new GeminiAnalyzer(configManager, store);
 const workflowManager = new WorkflowManager();
 
 let mainWindow = null;
 let tray = null;
+let transcribeBlockedUntil = 0;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -620,8 +623,16 @@ ipcMain.handle('get-screen-sources', async () => {
 });
 
 // Recording control
-ipcMain.handle('start-recording', (event, sourceId) => {
-  return screenRecorder.startRecording(sourceId);
+ipcMain.handle('start-recording', (event, sourceId, withVoiceAssistant = false) => {
+  // Setup question callback to send to renderer
+  if (withVoiceAssistant) {
+    screenRecorder.setQuestionCallback((question) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('voice-assistant-question', question);
+      }
+    });
+  }
+  return screenRecorder.startRecording(sourceId, withVoiceAssistant);
 });
 
 ipcMain.handle('stop-recording', () => {
@@ -650,13 +661,33 @@ ipcMain.handle('add-input-event', (event, inputEvent) => {
   return { success: true };
 });
 
+// Voice Assistant handlers
+ipcMain.handle('answer-voice-question', async (event, questionId, answer) => {
+  await screenRecorder.answerQuestion(questionId, answer);
+  return { success: true };
+});
+
+ipcMain.handle('capture-screen-for-analysis', async () => {
+  const recentEvents = inputLogger.getRecentEvents(5000); // Last 5 seconds
+  await screenRecorder.captureScreenForAnalysis(recentEvents);
+  return { success: true };
+});
+
+ipcMain.handle('get-voice-context', () => {
+  return screenRecorder.getVoiceAssistantContext();
+});
+
 // Gemini analysis
 ipcMain.handle('analyze-recording', async (event, recordingId) => {
   try {
     const videoPath = screenRecorder.getRecordingPath(recordingId);
     const events = inputLogger.getEvents(recordingId);
     const eventsSummary = inputLogger.summarizeEvents(events);
-    const result = await geminiAnalyzer.analyzeRecording(videoPath, eventsSummary);
+    
+    // Get voice assistant context if available
+    const voiceContext = screenRecorder.getVoiceAssistantContext();
+    
+    const result = await geminiAnalyzer.analyzeRecording(videoPath, eventsSummary, voiceContext);
     return result;
   } catch (error) {
     return { success: false, error: error.message };
@@ -751,6 +782,117 @@ ipcMain.handle('get-workflow-history', (event, workflowId) => {
 
 ipcMain.handle('clear-workflow-history', (event, workflowId) => {
   return workflowManager.clearHistory(workflowId || null);
+});
+
+// Audio transcription via Gemini
+ipcMain.handle('transcribe-audio', async (event, audioBuffer) => {
+  const https = require('https');
+  try {
+    const now = Date.now();
+    if (now < transcribeBlockedUntil) {
+      const retryInSeconds = Math.ceil((transcribeBlockedUntil - now) / 1000);
+      return {
+        success: false,
+        error: `Gemini API temporarily rate-limited. Please retry in ${retryInSeconds}s.`
+      };
+    }
+
+    // Get API key from multiple sources (in priority order)
+    const config = configManager.getConfig() || {};
+    const authProfileKeys = configManager.getApiKeys() || {};
+    const keySource =
+      store.get('geminiApiKey', '') ? 'electron-store(geminiApiKey)' :
+      authProfileKeys.google ? 'auth-profiles(google)' :
+      config?.agents?.defaults?.model?.apiKey ? 'config(agents.defaults.model.apiKey)' :
+      process.env.GEMINI_API_KEY ? 'env(GEMINI_API_KEY)' :
+      process.env.GOOGLE_API_KEY ? 'env(GOOGLE_API_KEY)' :
+      null;
+
+    const apiKey = store.get('geminiApiKey', '') ||
+                   authProfileKeys.google ||
+                   config?.agents?.defaults?.model?.apiKey ||
+                   process.env.GEMINI_API_KEY ||
+                   process.env.GOOGLE_API_KEY ||
+                   '';
+
+    if (!apiKey) {
+      return { success: false, error: 'No Gemini API key configured. Add one in Configuration > API Keys.' };
+    }
+
+    const maskedKey = apiKey.substring(0, 6) + '...' + apiKey.substring(apiKey.length - 4);
+    console.log(`[Transcribe] Using API key from ${keySource}: ${maskedKey}`);
+
+    const base64Audio = Buffer.from(audioBuffer).toString('base64');
+
+    const requestBody = {
+      contents: [{
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'audio/webm',
+              data: base64Audio
+            }
+          },
+          {
+            text: 'Transcribe this audio exactly as spoken. Output only the transcription text with no additional formatting, labels, or commentary. If there is no speech or only silence, output an empty string.'
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 2048
+      }
+    };
+
+    const modelName = 'gemini-2.5-flash';
+    const response = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'generativelanguage.googleapis.com',
+        path: `/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(parsed);
+            } else {
+              reject(new Error(parsed.error?.message || `HTTP ${res.statusCode}`));
+            }
+          } catch (e) {
+            reject(new Error(`Failed to parse response: ${data.substring(0, 200)}`));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.write(JSON.stringify(requestBody));
+      req.end();
+    });
+
+    const text = response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('[Transcribe] Success:', text.substring(0, 100));
+    return { success: true, text: text.trim() };
+  } catch (error) {
+    console.error('[Transcribe] Error:', error.message);
+    // Provide actionable error for quota issues
+    if (error.message?.includes('quota') || error.message?.includes('free_tier') || error.message?.includes('429')) {
+      const retryMatch = error.message.match(/retry in\s+([\d.]+)s/i);
+      const retryMs = retryMatch ? Math.ceil(parseFloat(retryMatch[1]) * 1000) : 30000;
+      transcribeBlockedUntil = Date.now() + retryMs;
+
+      const hint = 'Gemini API rate limit hit. Please wait a moment and try again. ' +
+        'If this persists, check your quota at https://ai.dev/rate-limit. ' +
+        'You can update the key in Configuration > API Keys.';
+      console.error('[Transcribe]', hint);
+      return { success: false, error: hint };
+    }
+    return { success: false, error: error.message };
+  }
 });
 
 // Gemini API key management

@@ -116,7 +116,7 @@ class ScreenRecorder {
         const imageBase64 = thumbnail.toPNG().toString('base64');
         const timestamp = now - this.startTime;
         
-        // Save capture
+        // Save capture (optional - for debugging)
         const capturePath = path.join(
           this.screenCapturesDir,
           `${this.currentRecordingId}_${timestamp}.png`
@@ -128,6 +128,7 @@ class ScreenRecorder {
       }
     } catch (error) {
       console.error('[Recorder] Error capturing screen:', error);
+      // Don't throw - just log and continue
     }
   }
   

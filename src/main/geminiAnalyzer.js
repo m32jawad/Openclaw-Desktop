@@ -7,21 +7,39 @@ class GeminiAnalyzer {
     this.configManager = configManager;
     this.store = store;
     this.baseUrl = 'generativelanguage.googleapis.com';
-    this.model = 'gemini-flash-latest'; // Supports video input
+    this.model = 'gemini-2.5-flash'; // Fast model for video analysis
+  }
+
+  async generateContent(apiKey, requestBody) {
+    return await this.makeRequest(
+      `/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
+      requestBody
+    );
   }
 
   getApiKey() {
     // First check dedicated store key (set from Config UI)
     const storeKey = this.store?.get('geminiApiKey', '');
-    if (storeKey) return storeKey;
+    if (storeKey) {
+      console.log('[GeminiAnalyzer] Using API key from electron-store');
+      return storeKey;
+    }
+
+    // Check auth-profiles.json (where saveApiKeys stores Google key)
+    try {
+      const authKeys = this.configManager.getApiKeys();
+      if (authKeys?.google) {
+        console.log('[GeminiAnalyzer] Using API key from auth-profiles');
+        return authKeys.google;
+      }
+    } catch (e) { /* ignore */ }
 
     const config = this.configManager.getConfig();
-    // Try multiple config paths for the API key
+    // Try remaining config paths for the API key
     return (
       config?.agents?.defaults?.model?.apiKey ||
-      config?.apiKeys?.google ||
-      config?.apiKeys?.gemini ||
       process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
       ''
     );
   }
@@ -65,37 +83,66 @@ class GeminiAnalyzer {
    */
   async analyzeWithVoiceAssistant(videoPath, eventsSummary, voiceContext, apiKey) {
     const videoBuffer = fs.readFileSync(videoPath);
-    const videoBase64 = videoBuffer.toString('base64');
+    const videoSizeBytes = videoBuffer.length;
     
     const prompt = this.buildDetailedPromptWithContext(eventsSummary, voiceContext);
     
-    const requestBody = {
-      contents: [
-        {
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'video/webm',
-                data: videoBase64
+    let requestBody;
+    
+    // For large files, use File API
+    if (videoSizeBytes > 20 * 1024 * 1024) {
+      console.log('[GeminiAnalyzer] Large file detected, using File API for voice assistant analysis');
+      const fileUri = await this.uploadFile(videoPath, apiKey);
+      
+      requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                fileData: {
+                  mimeType: 'video/webm',
+                  fileUri: fileUri
+                }
+              },
+              {
+                text: prompt
               }
-            },
-            {
-              text: prompt
-            }
-          ]
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 16000
         }
-      ],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 16000,
-        responseMimeType: 'application/json'
-      }
-    };
+      };
+    } else {
+      // For smaller files, use inline data
+      const videoBase64 = videoBuffer.toString('base64');
+      
+      requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'video/webm',
+                  data: videoBase64
+                }
+              },
+              {
+                text: prompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 16000
+        }
+      };
+    }
 
-    const response = await this.makeRequest(
-      `/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
-      requestBody
-    );
+    const response = await this.generateContent(apiKey, requestBody);
 
     return this.parseResponse(response);
   }
@@ -217,15 +264,11 @@ Make every step understandable to someone with basic computer skills who uses th
       ],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json'
+        maxOutputTokens: 8192
       }
     };
 
-    const response = await this.makeRequest(
-      `/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
-      requestBody
-    );
+    const response = await this.generateContent(apiKey, requestBody);
 
     return this.parseResponse(response);
   }
@@ -254,15 +297,11 @@ Make every step understandable to someone with basic computer skills who uses th
       ],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json'
+        maxOutputTokens: 8192
       }
     };
 
-    const response = await this.makeRequest(
-      `/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
-      requestBody
-    );
+    const response = await this.generateContent(apiKey, requestBody);
 
     return this.parseResponse(response);
   }
@@ -295,18 +334,59 @@ Make every step understandable to someone with basic computer skills who uses th
     }
 
     // Upload the file data
-    await this.makeRawUpload(uploadUrl, fileBuffer);
-
-    // Return the file URI
-    // We need to poll for file processing status
-    const filesResponse = await this.makeRequest(`/v1beta/files?key=${apiKey}`, null, 'GET');
-    const uploadedFile = filesResponse.files?.find(f => f.displayName === fileName);
+    const uploadResponse = await this.makeRawUpload(uploadUrl, fileBuffer);
     
-    if (!uploadedFile) {
-      throw new Error('Failed to find uploaded file');
+    // Parse the upload response to get the file info
+    let fileInfo;
+    try {
+      fileInfo = JSON.parse(uploadResponse);
+    } catch (e) {
+      throw new Error('Failed to parse upload response');
     }
 
-    return uploadedFile.uri;
+    if (!fileInfo?.file?.name) {
+      throw new Error('No file name in upload response');
+    }
+
+    const fileName_api = fileInfo.file.name;
+    console.log(`[GeminiAnalyzer] File uploaded: ${fileName_api}, waiting for ACTIVE state...`);
+
+    // Poll for file to become ACTIVE
+    const fileUri = await this.waitForFileActive(fileName_api, apiKey);
+    
+    console.log(`[GeminiAnalyzer] File is ACTIVE and ready: ${fileUri}`);
+    return fileUri;
+  }
+
+  /**
+   * Poll Gemini API until the file is in ACTIVE state
+   */
+  async waitForFileActive(fileName, apiKey, maxAttempts = 30, delayMs = 2000) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const fileInfo = await this.makeRequest(`/v1beta/${fileName}?key=${apiKey}`, null, 'GET');
+        
+        console.log(`[GeminiAnalyzer] File state check ${attempt}/${maxAttempts}: ${fileInfo.state}`);
+        
+        if (fileInfo.state === 'ACTIVE') {
+          return fileInfo.uri;
+        } else if (fileInfo.state === 'FAILED') {
+          throw new Error(`File processing failed: ${fileInfo.error?.message || 'Unknown error'}`);
+        }
+        
+        // Wait before next attempt
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          throw new Error(`File did not become ACTIVE after ${maxAttempts} attempts: ${error.message}`);
+        }
+        // Continue polling on errors (file might not be queryable yet)
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+    
+    throw new Error(`Timeout waiting for file to become ACTIVE after ${maxAttempts * delayMs / 1000} seconds`);
   }
 
   buildPrompt(eventsSummary) {

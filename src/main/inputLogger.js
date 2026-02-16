@@ -68,6 +68,14 @@ class InputLogger {
       elapsed: this.startTime ? Date.now() - this.startTime : 0
     };
   }
+  
+  // Get recent events from current recording for real-time analysis
+  getRecentEvents(windowMs = 5000) {
+    if (!this.isLogging || this.events.length === 0) return [];
+    
+    const now = Date.now() - this.startTime;
+    return this.events.filter(e => (now - e.timestamp) <= windowMs);
+  }
 
   // Summarize events into human-readable format for AI analysis
   summarizeEvents(events) {

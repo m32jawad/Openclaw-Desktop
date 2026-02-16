@@ -11,7 +11,8 @@ class VoiceAssistant {
     this.configManager = configManager;
     this.store = store;
     this.baseUrl = 'generativelanguage.googleapis.com';
-    this.model = 'gemini-flash-latest';
+    // this.model = 'gemini-2.5-flash';
+    this.model = 'gemini-2.5-flash';
     
     // Session state
     this.isActive = false;
@@ -20,8 +21,20 @@ class VoiceAssistant {
     this.screenCaptures = []; // Store periodic screen captures
     this.actionLog = []; // Store interpreted actions
     this.lastAnalysisTime = 0;
-    this.analysisInterval = 5000; // Analyze every 5 seconds
+    this.analysisInterval = 15000; // Analyze every 15 seconds (reduced for quota)
     this.questionCallback = null; // Callback to ask questions to user
+    this.apiCallCount = 0; // Track API calls
+    this.lastQuotaReset = Date.now();
+    this.quotaBlockedUntil = 0;
+    
+    // Question tracking to avoid spamming
+    this.questionCooldowns = {
+      clarification: 0,
+      data_purpose: 0,
+      app_switch: 0,
+      progress_check: 0
+    };
+    this.questionCooldownDuration = 30000; // Don't ask same type of question within 30 seconds
     
     // Context understanding
     this.currentContext = {
@@ -33,15 +46,27 @@ class VoiceAssistant {
   }
 
   getApiKey() {
+    // Check dedicated store key first (set from Config UI / Recorder setup)
     const storeKey = this.store?.get('geminiApiKey', '');
-    if (storeKey) return storeKey;
+    if (storeKey) {
+      console.log('[VoiceAssistant] Using API key from electron-store');
+      return storeKey;
+    }
+
+    // Check auth-profiles.json (where saveApiKeys stores Google key)
+    try {
+      const authKeys = this.configManager.getApiKeys();
+      if (authKeys?.google) {
+        console.log('[VoiceAssistant] Using API key from auth-profiles');
+        return authKeys.google;
+      }
+    } catch (e) { /* ignore */ }
 
     const config = this.configManager.getConfig();
     return (
       config?.agents?.defaults?.model?.apiKey ||
-      config?.apiKeys?.google ||
-      config?.apiKeys?.gemini ||
       process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
       ''
     );
   }
@@ -63,6 +88,14 @@ class VoiceAssistant {
       purpose: null
     };
     this.lastAnalysisTime = Date.now();
+    
+    // Reset question cooldowns for new session
+    this.questionCooldowns = {
+      clarification: 0,
+      data_purpose: 0,
+      app_switch: 0,
+      progress_check: 0
+    };
     
     console.log(`[VoiceAssistant] Session started for recording ${recordingId}`);
     
@@ -102,6 +135,10 @@ class VoiceAssistant {
     });
 
     const now = Date.now();
+    if (now < this.quotaBlockedUntil) {
+      return;
+    }
+
     if (now - this.lastAnalysisTime < this.analysisInterval) {
       return; // Don't analyze too frequently
     }
@@ -109,6 +146,19 @@ class VoiceAssistant {
     this.lastAnalysisTime = now;
 
     try {
+      // Check API quota (simple rate limiting)
+      if (now - this.lastQuotaReset > 60000) {
+        this.apiCallCount = 0;
+        this.lastQuotaReset = now;
+      }
+      
+      if (this.apiCallCount >= 15) { // Conservative limit: 15 calls per minute
+        console.log('[VoiceAssistant] Rate limit reached, skipping analysis');
+        return;
+      }
+      
+      this.apiCallCount++;
+      
       // Analyze what's happening in current screen
       const analysis = await this.analyzeCurrentAction(captureData, recentEvents);
       
@@ -127,11 +177,32 @@ class VoiceAssistant {
         }
 
         // Determine if we should ask a clarifying question
-        await this.considerAsking Question(analysis, recentEvents);
+        await this.considerAskingQuestion(analysis, recentEvents);
       }
     } catch (error) {
       console.error('[VoiceAssistant] Error processing capture:', error);
+      // If quota error, stop trying for a bit
+      if (error.message?.includes('quota')) {
+        const retryMs = this.extractRetryDelayMs(error.message);
+        this.quotaBlockedUntil = now + retryMs;
+        this.lastAnalysisTime = this.quotaBlockedUntil;
+        console.log(`[VoiceAssistant] Quota exceeded, pausing analysis for ${Math.ceil(retryMs / 1000)} seconds`);
+      }
     }
+  }
+
+  extractRetryDelayMs(message) {
+    const retryMatch = message?.match(/retry in\s+([\d.]+)s/i);
+    if (!retryMatch) {
+      return 60000;
+    }
+
+    const seconds = parseFloat(retryMatch[1]);
+    if (Number.isNaN(seconds) || seconds <= 0) {
+      return 60000;
+    }
+
+    return Math.ceil(seconds * 1000);
   }
 
   /**
@@ -166,7 +237,10 @@ Identify what action the user just performed or is performing. Be specific and c
   "potential_question": "A clarifying question to ask user about this action (or null if none needed)"
 }
 
-Only respond with valid JSON.`;
+IMPORTANT:
+- Return ONLY a raw JSON object (no markdown, no code fences, no extra text).
+- Ensure all keys are present.
+- Keep response under 300 tokens.`;
 
     try {
       const requestBody = {
@@ -187,8 +261,7 @@ Only respond with valid JSON.`;
         ],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 1024,
-          responseMimeType: 'application/json'
+          maxOutputTokens: 1024
         }
       };
 
@@ -199,7 +272,16 @@ Only respond with valid JSON.`;
 
       const text = response?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (text) {
-        return JSON.parse(text);
+        try {
+          return this.parseModelJson(text);
+        } catch (parseError) {
+          const recovered = this.parsePartialActionJson(text);
+          if (recovered) {
+            console.warn('[VoiceAssistant] Recovered partial action JSON from model output');
+            return recovered;
+          }
+          throw parseError;
+        }
       }
     } catch (error) {
       console.error('[VoiceAssistant] Error analyzing action:', error);
@@ -210,43 +292,62 @@ Only respond with valid JSON.`;
 
   /**
    * Decide whether to ask a clarifying question
+   * NOTE: This method checks multiple conditions and may ask multiple questions
+   * over time. It uses cooldowns to avoid spamming the user.
    */
   async considerAskingQuestion(analysis, recentEvents) {
+    const now = Date.now();
+    let questionAsked = false;
+
     // Ask questions for significant actions that need clarification
     if (analysis.significance === 'high' && analysis.potential_question) {
-      this.askQuestion(analysis.potential_question, 'clarification', analysis);
-      return;
+      if (now - this.questionCooldowns.clarification > this.questionCooldownDuration) {
+        this.askQuestion(analysis.potential_question, 'clarification', analysis);
+        this.questionCooldowns.clarification = now;
+        questionAsked = true;
+      }
     }
 
     // Ask about copied/pasted data
-    if (['copy', 'paste'].includes(analysis.action_type) && analysis.data_visible) {
-      this.askQuestion(
-        `I see you ${analysis.action_type === 'copy' ? 'copied' : 'pasted'} "${analysis.data_visible.substring(0, 50)}...". What is the purpose of this data?`,
-        'data_purpose',
-        analysis
-      );
-      return;
+    if (!questionAsked && ['copy', 'paste'].includes(analysis.action_type) && analysis.data_visible) {
+      if (now - this.questionCooldowns.data_purpose > this.questionCooldownDuration) {
+        this.askQuestion(
+          `I see you ${analysis.action_type === 'copy' ? 'copied' : 'pasted'} "${analysis.data_visible.substring(0, 50)}...". What is the purpose of this data?`,
+          'data_purpose',
+          analysis
+        );
+        this.questionCooldowns.data_purpose = now;
+        questionAsked = true;
+      }
     }
 
     // Ask about application switches
-    const lastApp = this.actionLog.length > 0 ? 
-      this.actionLog[this.actionLog.length - 1].application : null;
-    if (lastApp && analysis.application && lastApp !== analysis.application) {
-      this.askQuestion(
-        `You switched from ${lastApp} to ${analysis.application}. Why is this transition necessary?`,
-        'app_switch',
-        analysis
-      );
-      return;
+    if (!questionAsked) {
+      const lastApp = this.actionLog.length > 0 ? 
+        this.actionLog[this.actionLog.length - 1].application : null;
+      if (lastApp && analysis.application && lastApp !== analysis.application) {
+        if (now - this.questionCooldowns.app_switch > this.questionCooldownDuration) {
+          this.askQuestion(
+            `You switched from ${lastApp} to ${analysis.application}. Why is this transition necessary?`,
+            'app_switch',
+            analysis
+          );
+          this.questionCooldowns.app_switch = now;
+          questionAsked = true;
+        }
+      }
     }
 
     // Periodically ask for overall progress understanding
-    if (this.actionLog.length > 0 && this.actionLog.length % 10 === 0) {
-      this.askQuestion(
-        `We're ${this.actionLog.length} steps in. Can you summarize what you've accomplished so far?`,
-        'progress_check',
-        analysis
-      );
+    if (!questionAsked && this.actionLog.length > 0 && this.actionLog.length % 10 === 0) {
+      if (now - this.questionCooldowns.progress_check > this.questionCooldownDuration) {
+        this.askQuestion(
+          `We're ${this.actionLog.length} steps in. Can you summarize what you've accomplished so far?`,
+          'progress_check',
+          analysis
+        );
+        this.questionCooldowns.progress_check = now;
+      }
     }
   }
 
@@ -407,8 +508,7 @@ Make this workflow detailed enough that someone with basic computer skills could
         ],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 16000,
-          responseMimeType: 'application/json'
+          maxOutputTokens: 16000
         }
       };
 
@@ -419,7 +519,7 @@ Make this workflow detailed enough that someone with basic computer skills could
 
       const text = response?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (text) {
-        return JSON.parse(text);
+        return this.parseModelJson(text);
       }
 
       throw new Error('No response from Gemini API');
@@ -487,6 +587,100 @@ Make this workflow detailed enough that someone with basic computer skills could
       const time = Math.floor(a.timestamp / 1000);
       return `[${time}s] ${a.application}: ${a.action}`;
     }).join('\n');
+  }
+
+  /**
+   * Parse model output that may include markdown code fences or slight JSON noise.
+   */
+  parseModelJson(text) {
+    if (!text || typeof text !== 'string') {
+      throw new Error('Model response text is empty or invalid');
+    }
+
+    const trimmed = text.trim();
+    const withoutFences = trimmed
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    const extractedObject = (() => {
+      const firstBrace = withoutFences.indexOf('{');
+      const lastBrace = withoutFences.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        return withoutFences.slice(firstBrace, lastBrace + 1);
+      }
+      return withoutFences;
+    })();
+
+    const removeTrailingCommas = (value) => value.replace(/,\s*([}\]])/g, '$1');
+
+    const candidates = [
+      trimmed,
+      withoutFences,
+      extractedObject,
+      removeTrailingCommas(withoutFences),
+      removeTrailingCommas(extractedObject)
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch (e) {
+        // Try next candidate
+      }
+    }
+
+    throw new Error(`Model returned invalid JSON: ${trimmed.substring(0, 200)}`);
+  }
+
+  /**
+   * Best-effort parser for action-analysis responses when model output is truncated.
+   */
+  parsePartialActionJson(text) {
+    if (!text || typeof text !== 'string') {
+      return null;
+    }
+
+    const normalized = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .replace(/\r/g, '');
+
+    const readStringField = (field) => {
+      const pattern = new RegExp(`"${field}"\\s*:\\s*"([\\s\\S]*?)(?<!\\\\)"`, 'i');
+      const match = normalized.match(pattern);
+      return match ? match[1].trim() : null;
+    };
+
+    const readNullOrStringField = (field) => {
+      const nullPattern = new RegExp(`"${field}"\\s*:\\s*null`, 'i');
+      if (nullPattern.test(normalized)) {
+        return null;
+      }
+      return readStringField(field);
+    };
+
+    const application = readStringField('application');
+    const action = readStringField('action');
+    const actionType = readStringField('action_type') || 'other';
+    const target = readNullOrStringField('target') || '';
+    const dataVisible = readNullOrStringField('data_visible') || '';
+    const significance = readStringField('significance') || 'low';
+    const potentialQuestion = readNullOrStringField('potential_question');
+
+    if (!application && !action) {
+      return null;
+    }
+
+    return {
+      application: application || 'Unknown',
+      action: action || 'Detected user interaction',
+      action_type: actionType,
+      target,
+      data_visible: dataVisible,
+      significance,
+      potential_question: potentialQuestion
+    };
   }
 
   /**

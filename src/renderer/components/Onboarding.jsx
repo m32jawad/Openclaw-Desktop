@@ -269,7 +269,7 @@ function ModelSelectionStep({ config, updateConfig }) {
       name: 'Google Gemini', 
       icon: '🔷',
       description: 'Google\'s latest AI models with OAuth authentication',
-      models: ['gemini-3-flash', 'gemini-3-pro', 'gemini-2-pro']
+      models: ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-1.5-flash', 'gemini-1.5-pro']
     },
     { 
       id: 'anthropic', 
