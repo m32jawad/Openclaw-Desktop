@@ -27,8 +27,10 @@ async function main() {
     console.error('sharp not found. Run:  npm install --save-dev sharp');
     process.exit(1);
   }
-  try { pngToIco = require('png-to-ico').imagesToIco; }
-  catch {
+  try {
+    const pngToIcoModule = await import('png-to-ico');
+    pngToIco = pngToIcoModule.default;
+  } catch {
     console.error('png-to-ico not found. Run:  npm install --save-dev png-to-ico');
     process.exit(1);
   }
@@ -66,7 +68,7 @@ async function main() {
 
   // ── generate .ico (Windows) ────────────────────────────────────────────────
   const icoPath = path.join(OUT, 'icon.ico');
-  const icoBuf  = pngToIco(icoPngBuffers);
+  const icoBuf  = await pngToIco(icoPngBuffers);
   fs.writeFileSync(icoPath, icoBuf);
   console.log(`  ✓  icon.ico  (${ICO_SIZES.join(', ')} px embedded)`);
 
