@@ -148,7 +148,7 @@ function Onboarding({ onComplete }) {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="20,6 9,17 4,12"/>
               </svg>
-              Start OpenClaw
+              Start NeurAI
             </button>
           ) : (
             <button className="btn btn-primary" onClick={nextStep}>
@@ -180,9 +180,9 @@ function WelcomeStep() {
         <path d="M2 12l10 5 10-5"/>
       </svg>
       
-      <h3 style={{ fontSize: 24, marginBottom: 12 }}>Welcome to OpenClaw</h3>
+      <h3 style={{ fontSize: 24, marginBottom: 12 }}>Welcome to NeurAI</h3>
       <p style={{ color: 'var(--text-secondary)', maxWidth: 500, margin: '0 auto' }}>
-        OpenClaw is a conversation-first AI assistant that runs locally on your system and connects 
+        NeurAI is a conversation-first AI assistant that runs locally on your system and connects 
         to messaging platforms like Telegram, WhatsApp, or Discord.
       </p>
       
@@ -224,7 +224,7 @@ function ModeSelectionStep({ config, updateConfig }) {
             <div>
               <h4 style={{ marginBottom: 8 }}>QuickStart</h4>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-                Recommended for beginners. Sets up OpenClaw with safe defaults so you can get started quickly.
+                Recommended for beginners. Sets up NeurAI with safe defaults so you can get started quickly.
               </p>
             </div>
           </div>
@@ -245,7 +245,7 @@ function ModeSelectionStep({ config, updateConfig }) {
             <div>
               <h4 style={{ marginBottom: 8 }}>Manual Setup</h4>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-                For advanced users. Configure every aspect of OpenClaw manually.
+                For advanced users. Configure every aspect of NeurAI manually.
               </p>
             </div>
           </div>
@@ -545,7 +545,7 @@ function TelegramSetupStep({ config, updateConfig }) {
   return (
     <div>
       <p style={{ marginBottom: 24, color: 'var(--text-secondary)' }}>
-        Connect OpenClaw to Telegram so you can chat with your AI assistant from anywhere.
+        Connect NeurAI to Telegram so you can chat with your AI assistant from anywhere.
       </p>
 
       <div className="card" style={{ marginBottom: 16, padding: 20, background: 'var(--bg-tertiary)' }}>
@@ -671,7 +671,7 @@ function SkillsConfigStep({ config, updateConfig }) {
           <path d="M12 16v-4M12 8h.01"/>
         </svg>
         <span>
-          Skills can be added and configured later through the OpenClaw dashboard or CLI.
+          Skills can be added and configured later through the NeurAI dashboard or CLI.
         </span>
       </div>
     </div>
@@ -793,7 +793,7 @@ function PersonalityStep({ config, updateConfig }) {
     updateConfig('personality', {
       botName,
       userName,
-      greeting: greeting || `Hi ${userName || 'there'}! I'm ${botName || 'OpenClaw'}, your AI assistant. How can I help you today?`
+      greeting: greeting || `Hi ${userName || 'there'}! I'm ${botName || 'NeurAI'}, your AI assistant. How can I help you today?`
     });
   };
 
@@ -805,7 +805,7 @@ function PersonalityStep({ config, updateConfig }) {
 
       <div className="card" style={{ marginBottom: 16, padding: 20, background: 'var(--bg-tertiary)' }}>
         <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 16 }}>🦞</div>
-        <h4 style={{ textAlign: 'center', marginBottom: 8 }}>Time to hatch your OpenClaw!</h4>
+        <h4 style={{ textAlign: 'center', marginBottom: 8 }}>Time to set up your NeurAI!</h4>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
           Let's give your assistant a unique identity
         </p>
@@ -850,7 +850,7 @@ function PersonalityStep({ config, updateConfig }) {
         <textarea
           className="form-input"
           rows="3"
-          placeholder={`Hi ${userName || 'there'}! I'm ${botName || 'OpenClaw'}, your AI assistant. How can I help you today?`}
+          placeholder={`Hi ${userName || 'there'}! I'm ${botName || 'NeurAI'}, your AI assistant. How can I help you today?`}
           value={greeting}
           onChange={(e) => {
             setGreeting(e.target.value);
@@ -887,8 +887,8 @@ function CompleteStep({ config }) {
       <div style={{ fontSize: 64, marginBottom: 24 }}>🎉</div>
       <h3 style={{ fontSize: 24, marginBottom: 12 }}>All Set! Your Bot is Ready to Hatch</h3>
       <p style={{ color: 'var(--text-secondary)', marginBottom: 32, maxWidth: 500, margin: '0 auto 32px' }}>
-        {config.personality.botName || 'Your OpenClaw assistant'} is configured and ready to start. 
-        Click "Start OpenClaw" to launch the gateway and begin chatting!
+        {config.personality.botName || 'Your NeurAI assistant'} is configured and ready to start. 
+        Click "Start NeurAI" to launch the gateway and begin chatting!
       </p>
 
       <div style={{ textAlign: 'left', background: 'var(--bg-tertiary)', padding: 24, borderRadius: 8, marginBottom: 24 }}>
@@ -936,7 +936,7 @@ function CompleteStep({ config }) {
             <path d="M12 16v-4M12 8h.01"/>
           </svg>
           <div>
-            <strong>Next step:</strong> After starting OpenClaw, open Telegram and send <code>/start</code> to{' '}
+            <strong>Next step:</strong> After starting NeurAI, open Telegram and send <code>/start</code> to{' '}
             <strong>@{config.telegram.botUsername}</strong> to begin chatting with your bot!
           </div>
         </div>

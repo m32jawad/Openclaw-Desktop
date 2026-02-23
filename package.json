@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-desktop",
+  "name": "neurai-desktop",
   "version": "1.0.0",
-  "description": "OpenClaw Desktop Application - Complete Setup & Management",
+  "description": "NeurAI Desktop Application - Complete Setup & Management",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
@@ -18,8 +18,8 @@
     "icons": "node scripts/generate-icons.js"
   },
   "build": {
-    "appId": "com.openclaw.desktop",
-    "productName": "OpenClaw Desktop",
+    "appId": "com.neurai.desktop",
+    "productName": "NeurAI",
     "directories": {
       "output": "dist",
       "buildResources": "resources"
@@ -62,6 +62,7 @@
     "electron": "^28.1.0",
     "electron-builder": "^24.9.1",
     "html-webpack-plugin": "^5.6.0",
+    "png-to-ico": "^3.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "sharp": "^0.34.5",
@@ -69,6 +70,6 @@
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4"
   },
-  "author": "OpenClaw",
+  "author": "NeurAI",
   "license": "MIT"
 }

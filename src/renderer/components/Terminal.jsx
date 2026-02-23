@@ -17,7 +17,7 @@ function Terminal() {
     { label: 'Gateway Status', command: 'gateway --status', description: 'Check gateway status' },
     { label: 'List Channels', command: 'channels list', description: 'Show configured channels' },
     { label: 'Show Config', command: 'config show', description: 'Display current config' },
-    { label: 'Update OpenClaw', command: 'update', description: 'Update to latest version' }
+    { label: 'Update NeurAI', command: 'update', description: 'Update to latest version' }
   ];
 
   const handleExecute = async (cmd) => {
@@ -72,9 +72,9 @@ function Terminal() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 20 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 24, marginBottom: 8 }}>OpenClaw Terminal</h2>
+        <h2 style={{ fontSize: 24, marginBottom: 8 }}>NeurAI Terminal</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-          Run OpenClaw CLI commands directly from the app
+          Run NeurAI CLI commands directly from the app
         </p>
       </div>
 
@@ -224,7 +224,7 @@ function Terminal() {
           <circle cx="12" cy="12" r="10"/>
           <path d="M12 16v-4M12 8h.01"/>
         </svg>
-        Press Enter to execute. Commands run with your installed OpenClaw version.
+        Press Enter to execute. Commands run with your installed NeurAI version.
       </div>
     </div>
   );

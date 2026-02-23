@@ -161,7 +161,7 @@ function createTray() {
   
   const contextMenu = Menu.buildFromTemplate([
     { 
-      label: 'Open OpenClaw', 
+      label: 'Open NeurAI', 
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -191,7 +191,7 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('OpenClaw Desktop');
+  tray.setToolTip('NeurAI');
   tray.setContextMenu(contextMenu);
 
   tray.on('click', () => {
@@ -532,6 +532,128 @@ ipcMain.handle('open-external', async (event, url) => {
   try {
     const { shell } = require('electron');
     await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Opens a URL in an in-app Electron window with NeurAI branding injected
+ipcMain.handle('open-in-app-window', async (event, url) => {
+  try {
+    // Read the NeurAI logo as base64 so it can be embedded in injected HTML/CSS
+    const iconPath = path.join(__dirname, '../../resources/neur-icon.png');
+    let iconBase64 = '';
+    try {
+      iconBase64 = 'data:image/png;base64,' + require('fs').readFileSync(iconPath).toString('base64');
+    } catch (e) { /* icon not found – fall back to text only */ }
+
+    const appWindow = new BrowserWindow({
+      width: 1280,
+      height: 860,
+      title: 'NeurAI',
+      autoHideMenuBar: true,
+      ...(iconBase64 ? { icon: iconPath } : {}),
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: false,
+        sandbox: false,
+        webSecurity: false,
+        allowRunningInsecureContent: true
+      }
+    });
+
+    // Shared top-bar HTML (logo + name)
+    const barInnerHtml = iconBase64
+      ? `<img src="${iconBase64}" style="width:22px;height:22px;object-fit:contain;margin-right:8px;border-radius:4px;"> NeurAI`
+      : '&#10024; NeurAI';
+
+    // Shared top-bar CSS
+    const barCss = `
+      #neurai-topbar {
+        position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
+        height: 40px !important; background: linear-gradient(90deg, #4f46e5, #7c3aed) !important;
+        color: #fff !important; display: flex !important; align-items: center !important;
+        justify-content: center !important; gap: 0 !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.5px !important;
+        z-index: 999999 !important; user-select: none !important;
+      }
+      body { padding-top: 40px !important; }
+      img[src*="openclaw"], img[alt*="openclaw" i], img[alt*="OpenClaw" i] { display: none !important; }
+    `;
+
+    const buildPage = (bodyContent) => `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f0f23; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+  ${barCss}
+</style></head>
+<body>
+  <div id="neurai-topbar">${barInnerHtml}</div>
+  ${bodyContent}
+</body></html>`)}`;
+
+    const loadingHtml = buildPage(`
+      <div style="width:52px;height:52px;border:4px solid #2d2d5a;border-top-color:#6366f1;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;"></div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+      ${iconBase64 ? `<img src="${iconBase64}" style="width:64px;height:64px;object-fit:contain;margin-bottom:16px;border-radius:12px;">` : ''}
+      <h2 style="font-size:18px;margin-bottom:8px;">Loading NeurAI Dashboard...</h2>
+      <p style="color:#a0a0a0;font-size:14px;">Connecting to gateway</p>`);
+
+    const errorHtml = (targetUrl) => buildPage(`
+      ${iconBase64 ? `<img src="${iconBase64}" style="width:72px;height:72px;object-fit:contain;margin-bottom:20px;border-radius:14px;">` : '<div style="font-size:64px;margin-bottom:20px;">⚠️</div>'}
+      <h2 style="font-size:22px;margin-bottom:12px;color:#ef4444;">Gateway Not Reachable</h2>
+      <p style="color:#a0a0a0;font-size:14px;margin-bottom:24px;max-width:420px;text-align:center;line-height:1.6;">
+        Could not connect to the NeurAI gateway at<br>
+        <code style="background:#1a1a2e;padding:2px 8px;border-radius:4px;font-size:13px;color:#a0a0a0;">${targetUrl}</code><br><br>
+        Make sure the gateway is running from the Dashboard before opening this view.
+      </p>
+      <button style="background:#6366f1;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:14px;cursor:pointer;"
+              onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'"
+              onclick="window.location.href='${targetUrl}'">Retry</button>`);
+
+    const injectBranding = () => {
+      if (appWindow.isDestroyed()) return;
+      if (appWindow.webContents.getURL().startsWith('data:')) return;
+
+      appWindow.webContents.insertCSS(barCss).catch(() => {});
+
+      appWindow.webContents.executeJavaScript(`
+        (function() {
+          if (!document.getElementById('neurai-topbar')) {
+            const bar = document.createElement('div');
+            bar.id = 'neurai-topbar';
+            bar.innerHTML = ${JSON.stringify(barInnerHtml)};
+            document.body.insertBefore(bar, document.body.firstChild);
+          }
+          const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+          const nodes = [];
+          let n;
+          while ((n = walk.nextNode())) nodes.push(n);
+          nodes.forEach(n => {
+            if (/openclaw/i.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(/openclaw/gi, 'NeurAI');
+          });
+          if (/openclaw/i.test(document.title)) document.title = document.title.replace(/openclaw/gi, 'NeurAI');
+        })();
+      `).catch(() => {});
+    };
+
+    appWindow.webContents.on('did-finish-load', injectBranding);
+    appWindow.webContents.on('did-navigate', injectBranding);
+    appWindow.webContents.on('did-navigate-in-page', injectBranding);
+
+    appWindow.webContents.on('did-fail-load', (event, errorCode) => {
+      if (errorCode === -3) return; // ABORTED – ignore
+      if (!appWindow.isDestroyed()) appWindow.loadURL(errorHtml(url));
+    });
+
+    await appWindow.loadURL(loadingHtml);
+    appWindow.loadURL(url);
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

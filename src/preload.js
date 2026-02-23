@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   verifyTelegramBot: (token) => ipcRenderer.invoke('verify-telegram-bot', token),
   testBraveSearchKey: (key) => ipcRenderer.invoke('test-brave-search-key', key),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openInAppWindow: (url) => ipcRenderer.invoke('open-in-app-window', url),
   runOpenClawCLI: (command) => ipcRenderer.invoke('run-openclaw-cli', command),
   getGatewayErrors: () => ipcRenderer.invoke('get-gateway-errors'),
 

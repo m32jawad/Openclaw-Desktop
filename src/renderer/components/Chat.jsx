@@ -275,7 +275,7 @@ function Chat({ gatewayStatus }) {
         justifyContent: 'space-between'
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Chat with OpenClaw</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Chat with NeurAI</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span 
               className="status-dot" 
@@ -305,7 +305,7 @@ function Chat({ gatewayStatus }) {
           <div className="empty-state">
             <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
             <h3 className="empty-state-title">Start a Conversation</h3>
-            <p>Send a message to interact with OpenClaw AI</p>
+            <p>Send a message to interact with NeurAI</p>
           </div>
         ) : (
           <>

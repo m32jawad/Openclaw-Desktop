@@ -121,7 +121,7 @@ function Workflows({ onNavigateToRecorder, reloadTrigger, gatewayStatus }) {
       setRunStatus(prev => ({
         ...prev,
         status: 'running',
-        logs: [...prev.logs, 'Sending automation prompt to OpenClaw...']
+        logs: [...prev.logs, 'Sending automation prompt to NeurAI...']
       }));
 
       // Send to OpenClaw gateway
@@ -306,7 +306,7 @@ function Workflows({ onNavigateToRecorder, reloadTrigger, gatewayStatus }) {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="5,3 19,12 5,21"/>
                   </svg>
-                  Run with OpenClaw
+                  Run with NeurAI
                 </button>
                 {gatewayStatus !== 'running' && (
                   <span style={{
@@ -465,7 +465,7 @@ function Workflows({ onNavigateToRecorder, reloadTrigger, gatewayStatus }) {
             />
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label className="input-label">Automation Prompt (sent to OpenClaw)</label>
+            <label className="input-label">Automation Prompt (sent to NeurAI)</label>
             <textarea
               className="input-field"
               value={editData.automation_prompt}
@@ -617,7 +617,7 @@ function Workflows({ onNavigateToRecorder, reloadTrigger, gatewayStatus }) {
           {(runStatus.status === 'running' || runStatus.status === 'starting') && (
             <button 
               className="btn btn-primary" 
-              onClick={() => window.electronAPI.openExternal('http://localhost:18789')}
+              onClick={() => window.electronAPI.openInAppWindow('http://localhost:18789')}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
@@ -637,7 +637,7 @@ function Workflows({ onNavigateToRecorder, reloadTrigger, gatewayStatus }) {
                 {runStatus.status === 'starting' ? 'Preparing...' : 'Automation Running'}
               </h2>
               <p style={{ color: 'var(--text-secondary)' }}>
-                OpenClaw is executing the workflow steps
+                NeurAI is executing the workflow steps
               </p>
             </>
           ) : runStatus.status === 'completed' ? (

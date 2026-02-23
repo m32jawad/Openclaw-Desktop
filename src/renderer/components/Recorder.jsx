@@ -603,7 +603,7 @@ function Recorder({ onWorkflowCreated }) {
           <h2 style={{ fontSize: 22, marginBottom: 12 }}>Ready to Record</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: 32, maxWidth: 500, margin: '0 auto 32px' }}>
             Capture your screen activity and input events. The recording will be analyzed by Gemini AI 
-            to generate an automated workflow that you can edit and run with OpenClaw.
+            to generate an automated workflow that you can edit and run with NeurAI.
           </p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
             <div className="info-tag">

@@ -75,7 +75,7 @@ function InstallScreen({ onComplete }) {
       }
 
       if (!deps.openclaw?.installed) {
-        setProgress({ percent: 50, message: 'Installing OpenClaw...' });
+        setProgress({ percent: 50, message: 'Installing NeurAI...' });
         const result = await window.electronAPI.installOpenClaw();
         if (!result.success) throw new Error(result.error);
         deps = await checkDependencies(); // Re-check after openclaw install
@@ -102,7 +102,7 @@ function InstallScreen({ onComplete }) {
       <div className="sidebar">
         <div className="logo">
           <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          <h2>OpenClaw</h2>
+          <h2>NeurAI</h2>
         </div>
         <div className="step-list">
           <div className={`step ${!allReady ? 'active' : ''}`}>
@@ -120,7 +120,7 @@ function InstallScreen({ onComplete }) {
       </div>
       <div className="main-content">
         <div className="header">
-          <h1>Welcome to OpenClaw Desktop</h1>
+          <h1>Welcome to NeurAI</h1>
           <p>We'll guide you through the setup process.</p>
         </div>
         
@@ -130,7 +130,7 @@ function InstallScreen({ onComplete }) {
           <div className="dependency-list">
             <DependencyStatus label="Node.js Runtime" status={status.node?.installed} version={status.node?.version} />
             <DependencyStatus label="NPM Package Manager" status={status.npm?.installed} version={status.npm?.version} />
-            <DependencyStatus label="OpenClaw CLI" status={status.openclaw?.installed} version={status.openclaw?.version} />
+            <DependencyStatus label="NeurAI Engine" status={status.openclaw?.installed} version={status.openclaw?.version} />
             <DependencyStatus label="Disk Space (1GB+)" status={status.diskSpace?.available} version={status.diskSpace?.freeSpace} />
           </div>
         </div>

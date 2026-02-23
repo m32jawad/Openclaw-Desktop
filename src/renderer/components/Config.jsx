@@ -53,7 +53,7 @@ function Config() {
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Configuration</h1>
           <p style={{ color: 'var(--text-secondary)' }}>
-            Configure all OpenClaw gateway settings
+            Configure all NeurAI gateway settings
           </p>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -240,8 +240,8 @@ function AgentConfig({ config, onChange }) {
           <path d="M12 16v-4M12 8h.01"/>
         </svg>
         <span>
-          Agent configuration follows OpenClaw's schema. Some UI-only settings (names, emojis) are not 
-          persisted in OpenClaw config. Use the OpenClaw CLI for advanced agent configuration.
+          Agent configuration follows NeurAI's schema. Some UI-only settings (names, emojis) are not 
+          persisted in NeurAI config. Use the NeurAI CLI for advanced agent configuration.
         </span>
       </div>
 
@@ -502,7 +502,7 @@ function AdvancedConfig({ config, onChange }) {
   };
 
   const handleReset = async () => {
-    if (window.confirm('Are you sure you want to completely reset and repair OpenClaw? This will wipe the configuration, fix corrupted files, and restart the service.\n\nYour API keys will be preserved.')) {
+    if (window.confirm('Are you sure you want to completely reset and repair NeurAI? This will wipe the configuration, fix corrupted files, and restart the service.\n\nYour API keys will be preserved.')) {
       setResetting(true);
       try {
         // Get current keys to preserve them
@@ -601,7 +601,7 @@ function AdvancedConfig({ config, onChange }) {
           onClick={handleReset}
           disabled={resetting}
         >
-          {resetting ? 'Resetting & Repairing...' : 'Reset & Repair OpenClaw'}
+          {resetting ? 'Resetting & Repairing...' : 'Reset & Repair NeurAI'}
         </button>
       </div>
     </div>

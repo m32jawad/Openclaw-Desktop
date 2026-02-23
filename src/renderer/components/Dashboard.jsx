@@ -79,7 +79,7 @@ function Dashboard({ gatewayStatus }) {
   };
 
   const forceCleanupAndRestart = async () => {
-    if (!window.confirm('This will forcefully kill all OpenClaw gateway processes and restart. Continue?')) {
+    if (!window.confirm('This will forcefully kill all NeurAI gateway processes and restart. Continue?')) {
       return;
     }
     
@@ -125,7 +125,7 @@ function Dashboard({ gatewayStatus }) {
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Dashboard</h1>
         <p style={{ color: 'var(--text-secondary)' }}>
-          Monitor and control your OpenClaw gateway
+          Monitor and control your NeurAI gateway
         </p>
       </div>
 
@@ -151,10 +151,10 @@ function Dashboard({ gatewayStatus }) {
                 style={{ marginLeft: 8, padding: '2px 8px', fontSize: 12 }}
                 onClick={() => {
                   const token = config?.gateway?.auth?.token;
-                  window.electronAPI.openExternal(`http://localhost:${status.port}/dashboard?token=${token}`);
+                  window.electronAPI.openInAppWindow(`http://localhost:${status.port}/dashboard?token=${token}`);
                 }}
                 disabled={!isRunning}
-                title="Open OpenClaw Web Dashboard"
+                title="Open NeurAI Web Dashboard"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -204,7 +204,7 @@ function Dashboard({ gatewayStatus }) {
         <div className="card-header">
           <div>
             <h3 className="card-title">Gateway Control</h3>
-            <p className="card-subtitle">Start, stop, or restart the OpenClaw gateway</p>
+            <p className="card-subtitle">Start, stop, or restart the NeurAI gateway</p>
           </div>
         </div>
 
@@ -281,7 +281,7 @@ function Dashboard({ gatewayStatus }) {
           {isRunning && (
             <button 
               className="btn btn-primary" 
-              onClick={() => window.electronAPI.openExternal(`http://localhost:${status.port || 18789}`)}
+              onClick={() => window.electronAPI.openInAppWindow(`http://localhost:${status.port || 18789}`)}
               style={{ marginLeft: 'auto' }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -317,7 +317,7 @@ function Dashboard({ gatewayStatus }) {
                 Force Kill All Processes & Restart
               </button>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-                This will terminate all openclaw gateway processes running on your system and start fresh.
+                This will terminate all NeurAI gateway processes running on your system and start fresh.
               </p>
             </div>
           </details>
@@ -342,7 +342,7 @@ function Dashboard({ gatewayStatus }) {
           <QuickAction 
             icon="💬" 
             title="Open Chat" 
-            description="Send messages to OpenClaw"
+            description="Send messages to NeurAI"
             onClick={() => {}}
           />
           <QuickAction 
@@ -388,7 +388,7 @@ function Dashboard({ gatewayStatus }) {
             </div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 600 }}>
-                OpenClaw Agent
+                NeurAI Agent
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
                 Model: {config.agents?.defaults?.model?.primary || config.agent?.model || 'Not configured'}
