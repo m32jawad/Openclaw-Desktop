@@ -29,6 +29,11 @@ jobs:
 
       - name: Build Windows app
         run: npm run build:win
+        env:
+          NEURAI_ANTHROPIC_KEY: ${{ secrets.NEURAI_ANTHROPIC_KEY }}
+          NEURAI_GOOGLE_KEY: ${{ secrets.NEURAI_GOOGLE_KEY }}
+          NEURAI_OPENAI_KEY: ${{ secrets.NEURAI_OPENAI_KEY }}
+          NEURAI_BRAVE_SEARCH_KEY: ${{ secrets.NEURAI_BRAVE_SEARCH_KEY }}
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
@@ -58,6 +63,11 @@ jobs:
 
       - name: Build macOS app
         run: npm run build:mac
+        env:
+          NEURAI_ANTHROPIC_KEY: ${{ secrets.NEURAI_ANTHROPIC_KEY }}
+          NEURAI_GOOGLE_KEY: ${{ secrets.NEURAI_GOOGLE_KEY }}
+          NEURAI_OPENAI_KEY: ${{ secrets.NEURAI_OPENAI_KEY }}
+          NEURAI_BRAVE_SEARCH_KEY: ${{ secrets.NEURAI_BRAVE_SEARCH_KEY }}
 
       - name: Upload macOS builds
         uses: actions/upload-artifact@v4
@@ -89,6 +99,11 @@ jobs:
 
       - name: Build Linux app
         run: npm run build:linux
+        env:
+          NEURAI_ANTHROPIC_KEY: ${{ secrets.NEURAI_ANTHROPIC_KEY }}
+          NEURAI_GOOGLE_KEY: ${{ secrets.NEURAI_GOOGLE_KEY }}
+          NEURAI_OPENAI_KEY: ${{ secrets.NEURAI_OPENAI_KEY }}
+          NEURAI_BRAVE_SEARCH_KEY: ${{ secrets.NEURAI_BRAVE_SEARCH_KEY }}
 
       - name: Upload Linux builds
         uses: actions/upload-artifact@v4

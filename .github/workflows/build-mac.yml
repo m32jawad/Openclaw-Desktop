@@ -36,6 +36,10 @@ jobs:
         run: npm run build:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEURAI_ANTHROPIC_KEY: ${{ secrets.NEURAI_ANTHROPIC_KEY }}
+          NEURAI_GOOGLE_KEY: ${{ secrets.NEURAI_GOOGLE_KEY }}
+          NEURAI_OPENAI_KEY: ${{ secrets.NEURAI_OPENAI_KEY }}
+          NEURAI_BRAVE_SEARCH_KEY: ${{ secrets.NEURAI_BRAVE_SEARCH_KEY }}
 
       - name: List built files
         run: ls -la dist/
