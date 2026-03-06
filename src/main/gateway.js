@@ -103,6 +103,9 @@ class GatewayManager extends EventEmitter {
       console.warn('Failed to cleanup orphaned processes:', cleanupError);
     }
 
+    // Auto-configure default API keys if no keys exist
+    await this.ensureDefaultApiKeys();
+
     // Validate auth-profiles.json exists before starting
     try {
       const agentDir = path.join(os.homedir(), '.openclaw', 'agents', 'main', 'agent');
@@ -761,7 +764,7 @@ class GatewayManager extends EventEmitter {
   async configureApiKeys(apiKeys) {
     try {
       // OpenClaw reads API keys from auth-profiles.json in the agent directory
-      // Don't store them in openclaw.json as that's invalid
+      // Format: { version: 1, profiles: { "provider:default": { type, provider, key } } }
       const agentDir = path.join(os.homedir(), '.openclaw', 'agents', 'main', 'agent');
       const authProfilesPath = path.join(agentDir, 'auth-profiles.json');
       
@@ -771,40 +774,70 @@ class GatewayManager extends EventEmitter {
       }
 
       // Load existing auth profiles or create new
-      let authProfiles = {};
+      let authProfiles = {
+        version: 1,
+        profiles: {},
+        lastGood: {},
+        usageStats: {}
+      };
+      
       if (fs.existsSync(authProfilesPath)) {
         try {
           const content = fs.readFileSync(authProfilesPath, 'utf8');
-          authProfiles = JSON.parse(content);
+          const existing = JSON.parse(content);
+          // Merge with existing structure
+          authProfiles = {
+            version: existing.version || 1,
+            profiles: existing.profiles || {},
+            lastGood: existing.lastGood || {},
+            usageStats: existing.usageStats || {}
+          };
         } catch (e) {
           console.warn('Failed to parse existing auth-profiles.json, creating new one');
         }
       }
 
-      // Create the default profile if it doesn't exist
-      // Simplified structure: Map provider -> key directly for the agent
-      // This matches how OpenClaw expects auth-profiles.json in agent directories
-      
-      // Add API keys directly to the root object (flat structure)
+      // Add API keys in OpenClaw's expected format
       if (apiKeys.anthropic) {
-        authProfiles.anthropic = apiKeys.anthropic;
+        authProfiles.profiles['anthropic:default'] = {
+          type: 'api_key',
+          provider: 'anthropic',
+          key: apiKeys.anthropic
+        };
+        authProfiles.lastGood.anthropic = 'anthropic:default';
+        authProfiles.usageStats['anthropic:default'] = {
+          lastUsed: Date.now(),
+          errorCount: 0
+        };
       }
+      
       if (apiKeys.openai) {
-        authProfiles.openai = apiKeys.openai;
+        authProfiles.profiles['openai:default'] = {
+          type: 'api_key',
+          provider: 'openai',
+          key: apiKeys.openai
+        };
+        authProfiles.lastGood.openai = 'openai:default';
+        authProfiles.usageStats['openai:default'] = {
+          lastUsed: Date.now(),
+          errorCount: 0
+        };
       }
+      
       if (apiKeys.google || apiKeys.gemini) {
-        authProfiles.google = apiKeys.google || apiKeys.gemini;
+        authProfiles.profiles['google:default'] = {
+          type: 'api_key',
+          provider: 'google',
+          key: apiKeys.google || apiKeys.gemini
+        };
+        authProfiles.lastGood.google = 'google:default';
+        authProfiles.usageStats['google:default'] = {
+          lastUsed: Date.now(),
+          errorCount: 0
+        };
       }
 
-      // Also keep the legacy structure just in case, but prioritize flat
-      if (!authProfiles.default) {
-        authProfiles.default = {};
-      }
-      if (apiKeys.anthropic) authProfiles.default.anthropic = apiKeys.anthropic;
-      if (apiKeys.openai) authProfiles.default.openai = apiKeys.openai;
-      if (apiKeys.google || apiKeys.gemini) authProfiles.default.google = apiKeys.google || apiKeys.gemini;
-
-      // Save auth profiles with both flat and nested structure to be safe
+      // Save auth profiles
       fs.writeFileSync(authProfilesPath, JSON.stringify(authProfiles, null, 2), 'utf8');
       console.log('API keys configured in', authProfilesPath);
       
@@ -952,6 +985,52 @@ class GatewayManager extends EventEmitter {
     }
   }
 
+  /**
+   * Ensure default API keys are configured on first startup
+   */
+  async ensureDefaultApiKeys() {
+    try {
+      const agentDir = path.join(os.homedir(), '.openclaw', 'agents', 'main', 'agent');
+      const authProfilesPath = path.join(agentDir, 'auth-profiles.json');
+      
+      // Check if auth-profiles.json exists and has keys
+      let hasExistingKeys = false;
+      if (fs.existsSync(authProfilesPath)) {
+        try {
+          const content = fs.readFileSync(authProfilesPath, 'utf8');
+          const authProfiles = JSON.parse(content);
+          
+          // Check if there are any API keys configured
+          hasExistingKeys = authProfiles.profiles && Object.keys(authProfiles.profiles).length > 0;
+        } catch (e) {
+          console.warn('Failed to parse existing auth-profiles.json');
+        }
+      }
+      
+      // If no keys exist, configure default keys
+      if (!hasExistingKeys) {
+        console.log('No API keys found. Configuring default API keys...');
+        const defaultApiKeys = require('./defaultApiKeys');
+        
+        // Only configure keys that are not empty
+        const keysToConfig = {};
+        if (defaultApiKeys.anthropic) keysToConfig.anthropic = defaultApiKeys.anthropic;
+        if (defaultApiKeys.google) keysToConfig.google = defaultApiKeys.google;
+        if (defaultApiKeys.openai) keysToConfig.openai = defaultApiKeys.openai;
+        if (defaultApiKeys.braveSearch) keysToConfig.braveSearch = defaultApiKeys.braveSearch;
+        
+        if (Object.keys(keysToConfig).length > 0) {
+          await this.configureApiKeys(keysToConfig);
+          console.log('Default API keys configured successfully');
+        }
+      } else {
+        console.log('Existing API keys found, skipping default configuration');
+      }
+    } catch (error) {
+      console.error('Failed to ensure default API keys:', error);
+    }
+  }
+
   // Add method to completely reset configuration and restart
   async resetAndRepair(apiKeys) {
     try {
@@ -1021,12 +1100,22 @@ class GatewayManager extends EventEmitter {
       fs.writeFileSync(path.join(openclawDir, 'openclaw.json'), JSON.stringify(initialConfig, null, 2));
       console.log('Created fresh openclaw.json configuration');
 
-      // 5. Restore API keys
+      // 5. Auto-configure default API keys (load from defaultApiKeys.js)
+      try {
+        const defaultApiKeys = require('./defaultApiKeys');
+        console.log('Auto-configuring default API keys...');
+        await this.configureApiKeys(defaultApiKeys);
+        console.log('Default API keys configured successfully');
+      } catch (error) {
+        console.error('Failed to load default API keys:', error);
+      }
+
+      // 6. Restore user-provided API keys if any (overrides defaults)
       if (apiKeys) {
         await this.configureApiKeys(apiKeys);
       }
       
-      // 6. Start gateway - this should trigger the standard startup flow including token generation
+      // 7. Start gateway - this should trigger the standard startup flow including token generation
       console.log('Restarting gateway after reset...');
       await this.start();
       

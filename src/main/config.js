@@ -251,31 +251,68 @@ class ConfigManager {
         fs.mkdirSync(agentDir, { recursive: true });
       }
 
-      // Load existing auth profiles or create new
-      let authProfiles = {};
+      // Load existing auth profiles or create new  
+      let authProfiles = {
+        version: 1,
+        profiles: {},
+        lastGood: {},
+        usageStats: {}
+      };
+      
       if (fs.existsSync(authProfilesPath)) {
         try {
           const content = fs.readFileSync(authProfilesPath, 'utf8');
-          authProfiles = JSON.parse(content);
+          const existing = JSON.parse(content);
+          // Merge with existing structure
+          authProfiles = {
+            version: existing.version || 1,
+            profiles: existing.profiles || {},
+            lastGood: existing.lastGood || {},
+            usageStats: existing.usageStats || {}
+          };
         } catch (e) {
           console.warn('Failed to parse existing auth-profiles.json, creating new one');
         }
       }
 
-      // Create the default profile if it doesn't exist
-      if (!authProfiles.default) {
-        authProfiles.default = {};
-      }
-
-      // Add API keys to the default profile
+      // Add API keys in OpenClaw's expected format
       if (keys.anthropic) {
-        authProfiles.default.anthropic = keys.anthropic;
+        authProfiles.profiles['anthropic:default'] = {
+          type: 'api_key',
+          provider: 'anthropic',
+          key: keys.anthropic
+        };
+        authProfiles.lastGood.anthropic = 'anthropic:default';
+        authProfiles.usageStats['anthropic:default'] = {
+          lastUsed: Date.now(),
+          errorCount: 0
+        };
       }
+      
       if (keys.openai) {
-        authProfiles.default.openai = keys.openai;
+        authProfiles.profiles['openai:default'] = {
+          type: 'api_key',
+          provider: 'openai',
+          key: keys.openai
+        };
+        authProfiles.lastGood.openai = 'openai:default';
+        authProfiles.usageStats['openai:default'] = {
+          lastUsed: Date.now(),
+          errorCount: 0
+        };
       }
+      
       if (keys.google || keys.gemini) {
-        authProfiles.default.google = keys.google || keys.gemini;
+        authProfiles.profiles['google:default'] = {
+          type: 'api_key',
+          provider: 'google',
+          key: keys.google || keys.gemini
+        };
+        authProfiles.lastGood.google = 'google:default';
+        authProfiles.usageStats['google:default'] = {
+          lastUsed: Date.now(),
+          errorCount: 0
+        };
       }
 
       // Save auth profiles
@@ -304,7 +341,21 @@ class ConfigManager {
       const content = fs.readFileSync(authProfilesPath, 'utf8');
       const authProfiles = JSON.parse(content);
       
-      return authProfiles.default || {};
+      // Extract keys from OpenClaw format
+      const keys = {};
+      if (authProfiles.profiles) {
+        if (authProfiles.profiles['anthropic:default']) {
+          keys.anthropic = authProfiles.profiles['anthropic:default'].key;
+        }
+        if (authProfiles.profiles['openai:default']) {
+          keys.openai = authProfiles.profiles['openai:default'].key;
+        }
+        if (authProfiles.profiles['google:default']) {
+          keys.google = authProfiles.profiles['google:default'].key;
+        }
+      }
+      
+      return keys;
     } catch (error) {
       console.error('Failed to load auth profiles:', error);
       return {};

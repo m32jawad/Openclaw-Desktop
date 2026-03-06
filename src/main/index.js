@@ -385,35 +385,34 @@ ipcMain.handle('configure-openclaw', async (event, config) => {
     // Save entire config (properly structured)
     await configManager.saveConfig(openclawConfig);
 
-    // CRITICAL: Save API keys to auth-profiles.json (where OpenClaw reads them from)
-    // This ensures keys persist across restarts
-    if (config.apiKeys) {
-      console.log('Saving API keys to auth-profiles.json...');
-      
-      // Also configure via gateway manager
-      const saveResult = await gatewayManager.configureApiKeys(config.apiKeys);
+    // CRITICAL: Auto-configure default API keys (always done now, not user-provided)
+    // This ensures keys are available even if user skips the API key steps
+    console.log('Auto-configuring default API keys...');
+    try {
+      const defaultApiKeys = require('./defaultApiKeys');
+      const saveResult = await gatewayManager.configureApiKeys(defaultApiKeys);
       
       if (saveResult && saveResult.success) {
-        console.log('API keys saved successfully');
+        console.log('Default API keys configured successfully');
       } else {
-        console.error('Failed to save API keys via gateway manager');
+        console.error('Failed to save default API keys via gateway manager');
       }
-      
-      // Keep local configManager backup too
-      configManager.saveApiKeys(config.apiKeys);
+    } catch (error) {
+      console.error('Failed to load default API keys:', error);
     }
     
     // Also set environment variables temporarily for current session
-    if (config.apiKeys.anthropic) {
-      process.env.ANTHROPIC_API_KEY = config.apiKeys.anthropic;
+    const defaultApiKeys = require('./defaultApiKeys');
+    if (defaultApiKeys.anthropic) {
+      process.env.ANTHROPIC_API_KEY = defaultApiKeys.anthropic;
     }
-    if (config.apiKeys.openai) {
-      process.env.OPENAI_API_KEY = config.apiKeys.openai;
+    if (defaultApiKeys.openai) {
+      process.env.OPENAI_API_KEY = defaultApiKeys.openai;
     }
-    if (config.apiKeys.google) {
-      process.env.GOOGLE_API_KEY = config.apiKeys.google;
+    if (defaultApiKeys.google) {
+      process.env.GOOGLE_API_KEY = defaultApiKeys.google;
     }
-    if (config.apiKeys.braveSearch) {
+    if (config.apiKeys?.braveSearch) {
       process.env.BRAVE_SEARCH_API_KEY = config.apiKeys.braveSearch;
     }
     
@@ -568,8 +567,9 @@ ipcMain.handle('open-in-app-window', async (event, url) => {
       ? `<img src="${iconBase64}" style="width:22px;height:22px;object-fit:contain;margin-right:8px;border-radius:4px;"> NeurAI`
       : '&#10024; NeurAI';
 
-    // Shared top-bar CSS
+    // Comprehensive NeurAI UI styling - replaces OpenClaw's default colors and styles
     const barCss = `
+      /* Custom top bar */
       #neurai-topbar {
         position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
         height: 40px !important; background: linear-gradient(90deg, #4f46e5, #7c3aed) !important;
@@ -580,7 +580,311 @@ ipcMain.handle('open-in-app-window', async (event, url) => {
         z-index: 999999 !important; user-select: none !important;
       }
       body { padding-top: 40px !important; }
+      
+      /* Hide OpenClaw branding */
       img[src*="openclaw"], img[alt*="openclaw" i], img[alt*="OpenClaw" i] { display: none !important; }
+      
+      /* Override primary colors - NeurAI purple/blue theme */
+      :root {
+        --primary-color: #6366f1 !important;
+        --primary-dark: #4f46e5 !important;
+        --primary-light: #818cf8 !important;
+        --accent-color: #7c3aed !important;
+        --accent-dark: #6d28d9 !important;
+        --bg-primary: #0f0f23 !important;
+        --bg-secondary: #1a1a2e !important;
+        --bg-tertiary: #252541 !important;
+        --text-primary: #e0e0e0 !important;
+        --text-secondary: #a0a0a0 !important;
+        --border-color: #3a3a54 !important;
+        --success-color: #10b981 !important;
+        --error-color: #ef4444 !important;
+        --warning-color: #f59e0b !important;
+      }
+      
+      /* Background colors */
+      body, html {
+        background: #0f0f23 !important;
+        color: #e0e0e0 !important;
+      }
+      
+      /* Main containers */
+      main, .main, [role="main"], .content, .container {
+        background: #0f0f23 !important;
+      }
+      
+      /* Sidebar styling */
+      aside, .sidebar, nav, [role="navigation"] {
+        background: #1a1a2e !important;
+        border-color: #3a3a54 !important;
+      }
+      
+      /* Cards and panels */
+      .card, .panel, .box, [class*="card"], [class*="panel"] {
+        background: #1a1a2e !important;
+        border: 1px solid #3a3a54 !important;
+        border-radius: 8px !important;
+      }
+      
+      /* Headers */
+      header, .header, [class*="header"] {
+        background: linear-gradient(135deg, #1a1a2e 0%, #252541 100%) !important;
+        border-bottom: 1px solid #3a3a54 !important;
+      }
+      
+      h1, h2, h3, h4, h5, h6 {
+        color: #e0e0e0 !important;
+      }
+      
+      /* Buttons - Primary */
+      button, .button, .btn, [class*="btn-primary"], [type="submit"], input[type="button"] {
+        background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+      }
+      
+      button:hover, .button:hover, .btn:hover {
+        background: linear-gradient(135deg, #4f46e5 0%, #6d28d9 100%) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+      }
+      
+      /* Secondary buttons */
+      .btn-secondary, [class*="btn-outline"], button.secondary {
+        background: transparent !important;
+        border: 1px solid #6366f1 !important;
+        color: #6366f1 !important;
+      }
+      
+      .btn-secondary:hover {
+        background: rgba(99, 102, 241, 0.1) !important;
+        border-color: #818cf8 !important;
+      }
+      
+      /* Input fields */
+      input, textarea, select, .input, [type="text"], [type="email"], [type="password"], [type="search"] {
+        background: #252541 !important;
+        border: 1px solid #3a3a54 !important;
+        color: #e0e0e0 !important;
+        border-radius: 6px !important;
+        padding: 8px 12px !important;
+      }
+      
+      input:focus, textarea:focus, select:focus {
+        border-color: #6366f1 !important;
+        outline: none !important;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+      }
+      
+      /* Links */
+      a {
+        color: #818cf8 !important;
+        text-decoration: none !important;
+      }
+      
+      a:hover {
+        color: #a5b4fc !important;
+        text-decoration: underline !important;
+      }
+      
+      /* Tables */
+      table {
+        background: #1a1a2e !important;
+        border: 1px solid #3a3a54 !important;
+      }
+      
+      th {
+        background: #252541 !important;
+        color: #e0e0e0 !important;
+        border-bottom: 2px solid #6366f1 !important;
+      }
+      
+      td {
+        border-color: #3a3a54 !important;
+        color: #a0a0a0 !important;
+      }
+      
+      tr:hover {
+        background: rgba(99, 102, 241, 0.05) !important;
+      }
+      
+      /* Code blocks */
+      code, pre, .code {
+        background: #252541 !important;
+        color: #a5b4fc !important;
+        border: 1px solid #3a3a54 !important;
+        border-radius: 4px !important;
+      }
+      
+      /* Badges and tags */
+      .badge, .tag, .chip, [class*="badge"], [class*="tag"] {
+        background: rgba(99, 102, 241, 0.2) !important;
+        color: #a5b4fc !important;
+        border: 1px solid #6366f1 !important;
+      }
+      
+      /* Progress bars */
+      .progress, [class*="progress"] {
+        background: #252541 !important;
+      }
+      
+      .progress-bar, [class*="progress-bar"] {
+        background: linear-gradient(90deg, #6366f1, #7c3aed) !important;
+      }
+      
+      /* Alerts and notifications */
+      .alert, .notification, .message, [class*="alert"] {
+        border-radius: 8px !important;
+        border-left-width: 4px !important;
+      }
+      
+      .alert-info, [class*="alert-info"] {
+        background: rgba(99, 102, 241, 0.1) !important;
+        border-left-color: #6366f1 !important;
+        color: #a5b4fc !important;
+      }
+      
+      .alert-success, [class*="alert-success"] {
+        background: rgba(16, 185, 129, 0.1) !important;
+        border-left-color: #10b981 !important;
+        color: #6ee7b7 !important;
+      }
+      
+      .alert-warning, [class*="alert-warning"] {
+        background: rgba(245, 158, 11, 0.1) !important;
+        border-left-color: #f59e0b !important;
+        color: #fbbf24 !important;
+      }
+      
+      .alert-error, [class*="alert-error"], .alert-danger {
+        background: rgba(239, 68, 68, 0.1) !important;
+        border-left-color: #ef4444 !important;
+        color: #fca5a5 !important;
+      }
+      
+      /* Modals and dialogs */
+      .modal, .dialog, [class*="modal"], [role="dialog"] {
+        background: #1a1a2e !important;
+        border: 1px solid #3a3a54 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
+      }
+      
+      .modal-header, [class*="modal-header"] {
+        background: linear-gradient(135deg, #252541 0%, #1a1a2e 100%) !important;
+        border-bottom: 1px solid #3a3a54 !important;
+      }
+      
+      /* Dropdowns */
+      .dropdown, .dropdown-menu, [class*="dropdown"] {
+        background: #1a1a2e !important;
+        border: 1px solid #3a3a54 !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+      }
+      
+      .dropdown-item:hover, [class*="dropdown-item"]:hover {
+        background: rgba(99, 102, 241, 0.1) !important;
+        color: #a5b4fc !important;
+      }
+      
+      /* Tabs */
+      .tabs, [class*="tabs"], [role="tablist"] {
+        border-bottom: 2px solid #3a3a54 !important;
+      }
+      
+      .tab, [class*="tab"], [role="tab"] {
+        color: #a0a0a0 !important;
+        border-bottom: 2px solid transparent !important;
+      }
+      
+      .tab.active, [class*="tab"].active, [role="tab"][aria-selected="true"] {
+        color: #a5b4fc !important;
+        border-bottom-color: #6366f1 !important;
+        background: rgba(99, 102, 241, 0.05) !important;
+      }
+      
+      /* Scrollbars (Webkit) */
+      ::-webkit-scrollbar {
+        width: 8px !important;
+        height: 8px !important;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: #1a1a2e !important;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: #6366f1 !important;
+        border-radius: 4px !important;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: #7c3aed !important;
+      }
+      
+      /* Loading spinners */
+      .spinner, .loader, [class*="spinner"], [class*="loader"] {
+        border-color: #3a3a54 !important;
+        border-top-color: #6366f1 !important;
+      }
+      
+      /* Chat/message containers */
+      .message, .chat-message, [class*="message"] {
+        background: #252541 !important;
+        border: 1px solid #3a3a54 !important;
+        border-radius: 8px !important;
+      }
+      
+      .message.user, [class*="message-user"] {
+        background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%) !important;
+        color: #ffffff !important;
+      }
+      
+      .message.assistant, [class*="message-assistant"] {
+        background: #252541 !important;
+        color: #e0e0e0 !important;
+      }
+      
+      /* Status indicators */
+      .status, [class*="status"] {
+        border-radius: 50% !important;
+      }
+      
+      .status.online, .status-online {
+        background: #10b981 !important;
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.5) !important;
+      }
+      
+      .status.offline, .status-offline {
+        background: #6b7280 !important;
+      }
+      
+      .status.busy, .status-busy {
+        background: #f59e0b !important;
+        box-shadow: 0 0 8px rgba(245, 158, 11, 0.5) !important;
+      }
+      
+      /* Tooltips */
+      .tooltip, [class*="tooltip"], [role="tooltip"] {
+        background: #252541 !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #6366f1 !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+      }
+      
+      /* Selection */
+      ::selection {
+        background: rgba(99, 102, 241, 0.3) !important;
+        color: #ffffff !important;
+      }
+      
+      /* Disable any conflicting styles from original theme */
+      [class*="openclaw"], [id*="openclaw"] {
+        /* Override with NeurAI styles */
+      }
     `;
 
     const buildPage = (bodyContent) => `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>

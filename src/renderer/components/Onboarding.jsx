@@ -4,10 +4,9 @@ const STEPS = [
   { id: 'welcome', title: 'Welcome' },
   { id: 'mode', title: 'Setup Mode' },
   { id: 'model', title: 'AI Model' },
-  { id: 'auth', title: 'Authentication' },
+  // auth and api-keys steps removed - keys are auto-configured
   { id: 'telegram', title: 'Telegram Bot' },
   { id: 'skills', title: 'Skills' },
-  { id: 'api-keys', title: 'API Keys' },
   { id: 'personality', title: 'Personality' },
   { id: 'complete', title: 'Complete' }
 ];
@@ -92,14 +91,10 @@ function Onboarding({ onComplete }) {
         return <ModeSelectionStep config={config} updateConfig={updateConfig} />;
       case 'model':
         return <ModelSelectionStep config={config} updateConfig={updateConfig} />;
-      case 'auth':
-        return <AuthenticationStep config={config} updateConfig={updateConfig} />;
       case 'telegram':
         return <TelegramSetupStep config={config} updateConfig={updateConfig} />;
       case 'skills':
         return <SkillsConfigStep config={config} updateConfig={updateConfig} />;
-      case 'api-keys':
-        return <APIKeysStep config={config} updateConfig={updateConfig} />;
       case 'personality':
         return <PersonalityStep config={config} updateConfig={updateConfig} />;
       case 'complete':
@@ -189,11 +184,20 @@ function WelcomeStep() {
       <div style={{ marginTop: 32, textAlign: 'left', background: 'var(--bg-tertiary)', padding: 20, borderRadius: 8 }}>
         <h4 style={{ marginBottom: 12 }}>This wizard will guide you through:</h4>
         <ul style={{ paddingLeft: 20, color: 'var(--text-secondary)', lineHeight: '1.8' }}>
-          <li>Selecting your AI model provider (Google Gemini, Claude, OpenAI)</li>
-          <li>Connecting to Telegram for chat access</li>
-          <li>Configuring optional skills and API keys</li>
+          <li>Selecting your preferred AI model provider</li>
+          <li>Connecting to Telegram for chat access (optional)</li>
+          <li>Configuring optional skills</li>
           <li>Setting up your bot's personality</li>
         </ul>
+        <div style={{ marginTop: 16, padding: 12, background: 'var(--accent-primary-transparent)', borderRadius: 4, display: 'flex', alignItems: 'start', gap: 8 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 16v-4M12 8h.01"/>
+          </svg>
+          <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+            <strong>Good news!</strong> API keys are pre-configured for you, so you can get started right away without needing to provide your own.
+          </span>
+        </div>
       </div>
     </div>
   );

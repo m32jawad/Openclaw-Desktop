@@ -1,6 +1,6 @@
 {
   "name": "neurai-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "NeurAI Desktop Application - Complete Setup & Management",
   "main": "src/main/index.js",
   "scripts": {

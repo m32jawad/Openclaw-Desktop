@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.2.15",
+    "lastTouchedAt": "2026-02-24T20:06:27.326Z"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-5"
+      },
+      "workspace": "C:\\Users\\DELL\\.openclaw\\workspace",
+      "maxConcurrent": 4
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto"
+  },
+  "cron": {},
+  "channels": {
+    "whatsapp": {
+      "dmPolicy": "pairing",
+      "allowFrom": [
+        "+923105202695",
+        "+923145430275"
+      ],
+      "groupPolicy": "allowlist",
+      "debounceMs": 0,
+      "mediaMaxMb": 50
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "KssLPtitygTeLbKVakRLsfjycQYHiUgm"
+    }
+  },
+  "skills": {},
+  "plugins": {
+    "entries": {
+      "whatsapp": {
+        "enabled": true
+      }
+    }
+  }
+}
